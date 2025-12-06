@@ -3,6 +3,11 @@ AI Stock Predictor using LSTM Neural Networks
 Provides price predictions with confidence scores and recommendations.
 """
 
+import os
+# Suppress TensorFlow warnings
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
@@ -149,21 +154,63 @@ class StockPredictor:
     
     def predict_next_prices(self, ticker: str, days: int = 7) -> Optional[Dict]:
         """
-        Predict future prices.
+        Predict future prices including intraday OHLC predictions.
+        Now includes next trading day calculation (skips weekends).
         
         Returns:
-            Dictionary with predictions for multiple timeframes
+            Dictionary with predictions for multiple timeframes including intraday
         """
         try:
             # Get recent data
             stock = yf.Ticker(ticker)
-            hist = stock.history(period='3mo')
+            hist = stock.history(period='6mo')
             
             if hist.empty:
                 return None
             
+            # Calculate next trading day (skip weekends)
+            today = datetime.now()
+            next_trading_day = today + timedelta(days=1)
+            
+            # Skip weekends
+            while next_trading_day.weekday() >= 5:  # 5=Saturday, 6=Sunday
+                next_trading_day += timedelta(days=1)
+            
+            # Format the day name
+            day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            next_trading_day_name = day_names[next_trading_day.weekday()]
+            next_trading_day_str = next_trading_day.strftime('%Y-%m-%d')
+            
+            # Calculate days until next trading day for label (use .date() to remove time component)
+            days_until_trading = (next_trading_day.date() - today.date()).days
+            
             current_price = hist['Close'].iloc[-1]
             prices = hist['Close']
+            
+            # Calculate key statistics for better predictions
+            avg_daily_range = (hist['High'] - hist['Low']).mean()
+            avg_open_close_diff = (hist['Close'] - hist['Open']).abs().mean()
+            volatility = prices.pct_change().std()
+            
+            # Calculate recent momentum (last 5 days vs previous 5 days)
+            recent_avg = prices.tail(5).mean()
+            prev_avg = prices.tail(10).head(5).mean()
+            momentum = (recent_avg - prev_avg) / prev_avg if prev_avg else 0
+            
+            # Calculate RSI for trend direction
+            delta = prices.diff()
+            gain = delta.where(delta > 0, 0).rolling(window=14).mean()
+            loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
+            rs = gain / loss
+            rsi = 100 - (100 / (1 + rs))
+            current_rsi = rsi.iloc[-1] if not rsi.empty else 50
+            
+            # Calculate MACD for trend
+            exp12 = prices.ewm(span=12, adjust=False).mean()
+            exp26 = prices.ewm(span=26, adjust=False).mean()
+            macd = exp12 - exp26
+            signal = macd.ewm(span=9, adjust=False).mean()
+            macd_histogram = macd.iloc[-1] - signal.iloc[-1] if len(macd) > 0 else 0
             
             # Train model
             if not self.train(ticker):
@@ -171,67 +218,143 @@ class StockPredictor:
             
             predictions = {}
             
-            if self.use_lstm:
-                # LSTM predictions
-                last_60_days = prices.tail(60).values.reshape(-1, 1)
-                scaled_last_60 = self.scaler.transform(last_60_days)
-                
-                # Predict multiple days
-                for day in [1, 7, 30]:
-                    if day <= days:
-                        X_test = scaled_last_60[-60:].reshape(1, 60, 1)
-                        
-                        # Predict iteratively
-                        future_prices = []
-                        for _ in range(day):
-                            pred_scaled = self.model.predict(X_test, verbose=0)
-                            future_prices.append(pred_scaled[0, 0])
-                            
-                            # Update sequence
-                            X_test = np.append(X_test[0, 1:], [[pred_scaled[0, 0]]], axis=0)
-                            X_test = X_test.reshape(1, 60, 1)
-                        
-                        predicted_price = self.scaler.inverse_transform([[future_prices[-1]]])[0, 0]
-                        predictions[f'{day}d'] = predicted_price
-            else:
-                # Linear regression predictions
-                X = np.arange(len(prices)).reshape(-1, 1)
-                
-                for day in [1, 7, 30]:
-                    if day <= days:
-                        future_x = np.array([[len(prices) + day - 1]])
-                        predicted_price = self.model.predict(future_x)[0]
-                        predictions[f'{day}d'] = predicted_price
+            # Determine trend direction based on multiple factors
+            trend_score = 0
             
-            # Calculate confidence based on recent volatility
-            volatility = prices.pct_change().std()
-            confidence = max(0.3, min(0.95, 1 - (volatility * 10)))
+            # RSI factor
+            if current_rsi < 30:
+                trend_score += 2  # Oversold - likely to go up
+            elif current_rsi > 70:
+                trend_score -= 2  # Overbought - likely to go down
+            else:
+                trend_score += (50 - current_rsi) / 40  # Slightly favor uptrend if below 50
+            
+            # MACD factor
+            if macd_histogram > 0:
+                trend_score += 1
+            else:
+                trend_score -= 1
+            
+            # Momentum factor
+            trend_score += momentum * 10  # Scale momentum contribution
+            
+            # Price vs SMA
+            sma_20 = prices.tail(20).mean()
+            if current_price > sma_20:
+                trend_score += 0.5
+            else:
+                trend_score -= 0.5
+            
+            # Normalize trend score to percentage change expectation
+            expected_change_pct = max(-5, min(5, trend_score * 0.5))  # Cap at ±5%
+            
+            # Calculate predicted prices
+            predicted_close_1d = current_price * (1 + expected_change_pct / 100)
+            
+            # Calculate intraday predictions based on historical patterns
+            avg_open_diff = (hist['Open'] - hist['Close'].shift(1)).mean()
+            avg_high_from_open = (hist['High'] / hist['Open'] - 1).mean()
+            avg_low_from_open = (hist['Open'] / hist['Low'] - 1).mean()
+            
+            predicted_open_1d = current_price + avg_open_diff
+            predicted_high_1d = predicted_open_1d * (1 + avg_high_from_open)
+            predicted_low_1d = predicted_open_1d * (1 - avg_low_from_open)
+            
+            # Adjust high/low based on trend
+            if expected_change_pct > 0:
+                predicted_high_1d = max(predicted_high_1d, predicted_close_1d * 1.005)
+            else:
+                predicted_low_1d = min(predicted_low_1d, predicted_close_1d * 0.995)
+            
+            # Set default predictions
+            predictions = {
+                '1d': float(predicted_close_1d),
+                '3d': float(current_price * (1 + expected_change_pct * 1.5 / 100)),
+                '7d': float(current_price * (1 + expected_change_pct * 2 / 100)),
+            }
+            
+            # Use LSTM for better predictions if available
+            if self.use_lstm and self.model is not None:
+                try:
+                    last_60_days = prices.tail(60).values.reshape(-1, 1)
+                    scaled_last_60 = self.scaler.transform(last_60_days)
+                    
+                    for day in [1, 3, 7]:
+                        if day <= days:
+                            X_test = scaled_last_60[-60:].reshape(1, 60, 1)
+                            
+                            # Predict iteratively
+                            future_prices = []
+                            for _ in range(day):
+                                pred_scaled = self.model.predict(X_test, verbose=0)
+                                future_prices.append(pred_scaled[0, 0])
+                                
+                                # Update sequence
+                                X_test = np.append(X_test[0, 1:], [[pred_scaled[0, 0]]], axis=0)
+                                X_test = X_test.reshape(1, 60, 1)
+                            
+                            lstm_price = self.scaler.inverse_transform([[future_prices[-1]]])[0, 0]
+                            
+                            # Blend LSTM with technical analysis (60% LSTM, 40% technical)
+                            predictions[f'{day}d'] = float(lstm_price * 0.6 + predictions[f'{day}d'] * 0.4)
+                except Exception as e:
+                    logger.warning(f"LSTM prediction failed, using technical analysis only: {e}")
+            
+            # Intraday predictions for tomorrow
+            intraday_predictions = {
+                'open': float(predicted_open_1d),
+                'high': float(predicted_high_1d),
+                'low': float(predicted_low_1d),
+                'close': float(predictions['1d'])
+            }
+            
+            # Calculate confidence based on multiple factors
+            # Lower volatility = higher confidence
+            volatility_score = max(0.3, min(0.95, 1 - (volatility * 8)))
+            # Strong trend = higher confidence
+            trend_strength = abs(trend_score) / 5  # Normalize to 0-1
+            confidence = volatility_score * 0.6 + trend_strength * 0.4
+            confidence = max(0.35, min(0.92, confidence))
             
             # Determine trend
-            recent_change = (current_price - prices.iloc[-7]) / prices.iloc[-7] * 100
-            if recent_change > 2:
+            if expected_change_pct > 1:
                 trend = 'BULLISH'
-            elif recent_change < -2:
+            elif expected_change_pct < -1:
                 trend = 'BEARISH'
             else:
                 trend = 'NEUTRAL'
             
             # Generate recommendation
-            if predictions.get('1d', current_price) > current_price * 1.01:
+            if expected_change_pct > 1.5:
+                recommendation = 'STRONG BUY'
+            elif expected_change_pct > 0.5:
                 recommendation = 'BUY'
-            elif predictions.get('1d', current_price) < current_price * 0.99:
+            elif expected_change_pct < -1.5:
+                recommendation = 'STRONG SELL'
+            elif expected_change_pct < -0.5:
                 recommendation = 'SELL'
             else:
                 recommendation = 'HOLD'
             
             return {
                 'current_price': float(current_price),
-                'predictions': {k: float(v) for k, v in predictions.items()},
+                'predictions': predictions,
+                'intraday': intraday_predictions,
+                'expected_change_pct': float(expected_change_pct),
                 'confidence': float(confidence),
                 'trend': trend,
                 'recommendation': recommendation,
-                'model_type': 'LSTM' if self.use_lstm else 'Linear',
-                'timestamp': datetime.now().isoformat()
+                'model_type': 'LSTM+Technical' if self.use_lstm else 'Technical',
+                'timestamp': datetime.now().isoformat(),
+                'next_trading_day': next_trading_day_str,
+                'next_trading_day_name': next_trading_day_name,
+                'days_until_trading': days_until_trading,
+                'analysis_factors': {
+                    'rsi': float(current_rsi),
+                    'macd_signal': 'Bullish' if macd_histogram > 0 else 'Bearish',
+                    'momentum': 'Positive' if momentum > 0 else 'Negative',
+                    'volatility': 'Low' if volatility < 0.02 else 'Medium' if volatility < 0.04 else 'High'
+                }
             }
             
         except Exception as e:

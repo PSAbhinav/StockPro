@@ -7,6 +7,7 @@
     <title>StockPro - Professional Trading Platform</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * {
@@ -463,13 +464,6 @@
             font-size: 1rem;
             font-weight: 700;
             cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
-        }
-
-        .btn-buy:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
         }
 
         .btn-sell {
@@ -482,37 +476,6 @@
             font-size: 1rem;
             font-weight: 700;
             cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
-        }
-
-        .btn-sell:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
-        }
-
-        .trade-input {
-            width: 100%;
-            padding: 1rem;
-            border: 2px solid var(--border);
-            border-radius: 10px;
-            font-size: 1.1rem;
-            background: var(--bg-secondary);
-            color: var(--text-primary);
-            margin: 0.5rem 0;
-        }
-
-        .trade-summary {
-            background: var(--bg-secondary);
-            padding: 1rem;
-            border-radius: 10px;
-            margin: 1rem 0;
-        }
-
-        .trade-summary-row {
-            display: flex;
-            justify-content: space-between;
-            margin: 0.5rem 0;
         }
 
         .profile-header {
@@ -557,20 +520,6 @@
             font-size: 0.85rem;
             color: var(--text-secondary);
             margin-top: 0.25rem;
-        }
-
-        .portfolio-list {
-            margin-top: 1.5rem;
-        }
-
-        .portfolio-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem;
-            background: var(--bg-secondary);
-            border-radius: 8px;
-            margin-bottom: 0.5rem;
         }
 
         .ai-panel {
@@ -623,6 +572,57 @@
             margin-top: 0.25rem;
         }
 
+        .trend-indicator {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 12px;
+            text-align: center;
+            color: white;
+        }
+
+        .trend-indicator.uptrend {
+            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        }
+
+        .trend-indicator.downtrend {
+            background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+        }
+
+        .prediction-box {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            border: 2px dashed var(--accent);
+        }
+
+        .prediction-box h4 {
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .prediction-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.5rem;
+            text-align: center;
+        }
+
+        .prediction-grid div {
+            padding: 0.5rem;
+            background: var(--bg-card);
+            border-radius: 8px;
+        }
+
+        .prediction-grid .label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .prediction-grid .value {
+            font-weight: 700;
+        }
+
         .hidden {
             display: none !important;
         }
@@ -633,20 +633,125 @@
             color: var(--text-secondary);
         }
 
+        /* Loading Skeleton */
+        .skeleton {
+            background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-card) 50%, var(--bg-secondary) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 8px;
+        }
+
+        .skeleton-card {
+            height: 120px;
+            margin-bottom: 1rem;
+        }
+
+        .skeleton-text {
+            height: 20px;
+            margin-bottom: 10px;
+        }
+
+        .skeleton-title {
+            height: 30px;
+            width: 60%;
+            margin-bottom: 15px;
+        }
+
+        @keyframes shimmer {
+            0% {
+                background-position: -200% 0;
+            }
+
+            100% {
+                background-position: 200% 0;
+            }
+        }
+
+        /* Smooth Animations */
+        .stock-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .stock-card:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn {
+            transition: all 0.2s ease;
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        /* Price update animation */
+        @keyframes priceFlash {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.7;
+            }
+        }
+
+        .price-updating {
+            animation: priceFlash 0.5s ease;
+        }
+
+        /* Connection status indicator */
+        .connection-status {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            background: var(--bg-card);
+            border: 2px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            z-index: 1000;
+            font-size: 0.85rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.disconnected {
+            background: var(--danger);
+            animation: none;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
         @media (max-width: 768px) {
             .detail-view {
                 grid-template-columns: 1fr;
-            }
-
-            .chart-controls {
-                flex-direction: column;
-                align-items: flex-start;
             }
         }
     </style>
 </head>
 
-<body>
+<body data-theme="dark">
     <div class="modal" id="loginModal">
         <div class="modal-content">
             <button class="close-btn"
@@ -679,26 +784,25 @@
                 onclick="document.getElementById('tradeModal').classList.remove('active')">×</button>
             <h2 id="tradeModalTitle">Buy Stock</h2>
             <div style="margin: 1rem 0;">
-                <div style="font-size: 1.2rem; font-weight: 700;" id="tradeStockName">RELIANCE.NS</div>
-                <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent);" id="tradeStockPrice">₹2,500.00
-                </div>
+                <div style="font-size: 1.2rem; font-weight: 700;" id="tradeStockName"></div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent);" id="tradeStockPrice"></div>
             </div>
             <div class="form-group">
                 <label>Quantity</label>
-                <input type="number" class="trade-input" id="tradeQuantity" min="1" value="1"
-                    onchange="updateTradeTotal()">
+                <input type="number" id="tradeQuantity" min="1" value="1" onchange="updateTradeTotal()">
             </div>
-            <div class="trade-summary">
-                <div class="trade-summary-row"><span>Price per share</span><span id="tradePricePerShare">₹0.00</span>
-                </div>
-                <div class="trade-summary-row"><span>Quantity</span><span id="tradeSummaryQty">1</span></div>
-                <div class="trade-summary-row"
-                    style="font-weight: 700; font-size: 1.1rem; border-top: 1px solid var(--border); padding-top: 0.5rem; margin-top: 0.5rem;">
-                    <span>Total</span><span id="tradeTotal">₹0.00</span>
+            <div style="background: var(--bg-secondary); padding: 1rem; border-radius: 10px; margin: 1rem 0;">
+                <div style="display: flex; justify-content: space-between; margin: 0.5rem 0;"><span>Price</span><span
+                        id="tradePricePerShare"></span></div>
+                <div style="display: flex; justify-content: space-between; margin: 0.5rem 0;"><span>Qty</span><span
+                        id="tradeSummaryQty">1</span></div>
+                <div
+                    style="display: flex; justify-content: space-between; font-weight: 700; border-top: 1px solid var(--border); padding-top: 0.5rem; margin-top: 0.5rem;">
+                    <span>Total</span><span id="tradeTotal"></span>
                 </div>
             </div>
-            <button class="btn btn-primary" id="tradeConfirmBtn" style="width: 100%; padding: 1rem; font-size: 1rem;"
-                onclick="executeTrade()">Confirm Order</button>
+            <button class="btn btn-primary" id="tradeConfirmBtn" style="width: 100%; padding: 1rem;"
+                onclick="executeTrade()">Confirm</button>
         </div>
     </div>
 
@@ -707,9 +811,9 @@
             <button class="close-btn"
                 onclick="document.getElementById('profileModal').classList.remove('active')">×</button>
             <div class="profile-header">
-                <div class="profile-avatar" id="profileAvatar">👤</div>
+                <div class="profile-avatar">👤</div>
                 <h2 id="profileUsername">User</h2>
-                <p style="color: var(--text-secondary);" id="profileEmail">user@email.com</p>
+                <p style="color: var(--text-secondary);" id="profileEmail"></p>
             </div>
             <div class="profile-stats">
                 <div class="profile-stat">
@@ -722,16 +826,16 @@
                 </div>
                 <div class="profile-stat">
                     <div class="profile-stat-value positive" id="profileProfit">+$0</div>
-                    <div class="profile-stat-label">Total Profit</div>
+                    <div class="profile-stat-label">Profit</div>
                 </div>
                 <div class="profile-stat">
                     <div class="profile-stat-value" id="profileTrades">0</div>
-                    <div class="profile-stat-label">Total Trades</div>
+                    <div class="profile-stat-label">Trades</div>
                 </div>
             </div>
-            <div class="portfolio-list" id="portfolioList">
-                <h3 style="margin-bottom: 1rem;">Your Portfolio</h3>
-                <p style="color: var(--text-secondary);">No holdings yet. Start trading!</p>
+            <div id="portfolioList" style="margin-top: 1.5rem;">
+                <h3>Your Portfolio</h3>
+                <p style="color: var(--text-secondary);">No holdings yet.</p>
             </div>
         </div>
     </div>
@@ -741,17 +845,17 @@
         <div class="header-actions">
             <select id="themeSelector" onchange="changeTheme()"
                 style="padding: 0.5rem; border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 2px solid var(--border);">
-                <option value="dark">Dark Theme</option>
-                <option value="light">Light Theme</option>
-                <option value="blue">Blue Theme</option>
-                <option value="purple">Purple Theme</option>
-                <option value="green">Green Theme</option>
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+                <option value="blue">Blue</option>
+                <option value="purple">Purple</option>
+                <option value="green">Green</option>
             </select>
             <button class="btn btn-secondary" id="authBtn" onclick="showLoginModal()">Login</button>
             <div id="userInfo" class="hidden" style="display: flex; align-items: center; gap: 1rem;">
                 <span id="username" style="font-weight: 600;"></span>
                 <span id="balance" style="color: var(--success); font-weight: 700;"></span>
-                <button class="btn btn-secondary" onclick="showProfile()">👤 Profile</button>
+                <button class="btn btn-secondary" onclick="showProfile()">👤</button>
                 <button class="btn btn-secondary" onclick="logout()">Logout</button>
             </div>
         </div>
@@ -759,15 +863,14 @@
 
     <div class="container">
         <div class="search-box">
-            <input type="text" class="search-input" id="searchInput"
-                placeholder="🔍 Search any stock... (e.g., Tata Motors, HDFC Bank, Apple, Tesla)"
+            <input type="text" class="search-input" id="searchInput" placeholder="🔍 Search stocks..."
                 onkeyup="searchStocks()">
             <div id="searchResults" class="search-results hidden"></div>
         </div>
 
         <div id="homepage">
             <div class="category-section">
-                <h2 class="category-title">🇮🇳 Indian Large Cap Stocks</h2>
+                <h2 class="category-title">🇮🇳 Indian Large Cap</h2>
                 <div class="category-grid" id="indianLargeCap"></div>
             </div>
             <div class="category-section">
@@ -779,25 +882,24 @@
                 <div class="category-grid" id="topLosers"></div>
             </div>
             <div class="category-section">
-                <h2 class="category-title">🇺🇸 US Large Cap Stocks</h2>
+                <h2 class="category-title">🇺🇸 US Large Cap</h2>
                 <div class="category-grid" id="usLargeCap"></div>
             </div>
         </div>
 
         <div id="stockDetail" class="hidden">
-            <button class="btn btn-secondary" onclick="backToHome()" style="margin-bottom: 1rem;">← Back to
-                Home</button>
+            <button class="btn btn-secondary" onclick="backToHome()" style="margin-bottom: 1rem;">← Back</button>
             <div class="detail-view">
                 <div>
                     <div class="card">
                         <h1 id="stockName">Loading...</h1>
                         <div class="stock-price" id="stockPrice">$0.00</div>
-                        <div class="stock-change" id="stockChange">+$0.00 (+0.00%)</div>
+                        <div class="stock-change" id="stockChange">+$0.00</div>
 
                         <div class="chart-controls">
                             <div class="chart-type-toggle">
                                 <button class="chart-type-btn active" onclick="setChartType('candlestick')">📊
-                                    Candlestick</button>
+                                    Candle</button>
                                 <button class="chart-type-btn" onclick="setChartType('line')">📈 Line</button>
                                 <button class="chart-type-btn" onclick="setChartType('area')">🌊 Area</button>
                             </div>
@@ -807,23 +909,43 @@
                                 <button class="timeframe-btn active"
                                     onclick="loadChart(currentStock, '1mo', '1d')">1M</button>
                                 <button class="timeframe-btn" onclick="loadChart(currentStock, '3mo', '1d')">3M</button>
-                                <button class="timeframe-btn" onclick="loadChart(currentStock, '6mo', '1d')">6M</button>
                                 <button class="timeframe-btn" onclick="loadChart(currentStock, '1y', '1d')">1Y</button>
                             </div>
                         </div>
 
                         <div class="chart-container" id="candlestickChart"></div>
+                        <div id="trendIndicator"></div>
 
-                        <div class="range-indicator" id="rangeIndicator">
+                        <div id="intradayPrediction" class="prediction-box hidden">
+                            <h4 id="intradayPredTitle">🔮 Next Trading Day Prediction</h4>
+                            <div class="prediction-grid">
+                                <div>
+                                    <div class="label">OPEN</div>
+                                    <div class="value" id="predOpen">-</div>
+                                </div>
+                                <div>
+                                    <div class="label">HIGH</div>
+                                    <div class="value positive" id="predHigh">-</div>
+                                </div>
+                                <div>
+                                    <div class="label">LOW</div>
+                                    <div class="value negative" id="predLow">-</div>
+                                </div>
+                                <div>
+                                    <div class="label">CLOSE</div>
+                                    <div class="value" id="predClose">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="range-indicator">
                             <div class="range-header"><span>52-Week Range</span></div>
                             <div class="range-bar">
                                 <div class="range-marker" id="rangeMarker" style="left: 50%;"></div>
                             </div>
-                            <div class="range-values">
-                                <span class="range-low" id="rangeLow">₹0</span>
-                                <span class="range-high" id="rangeHigh">₹0</span>
-                            </div>
-                            <div class="range-current" id="rangeCurrent">Current: ₹0 (50% of range)</div>
+                            <div class="range-values"><span class="range-low" id="rangeLow">₹0</span><span
+                                    class="range-high" id="rangeHigh">₹0</span></div>
+                            <div class="range-current" id="rangeCurrent">Current: ₹0</div>
                         </div>
 
                         <div class="trade-buttons">
@@ -836,7 +958,7 @@
                         </div>
                     </div>
                     <div class="card" style="margin-top: 1rem;">
-                        <h3>📰 Latest News</h3>
+                        <h3>📰 News</h3>
                         <div id="newsContainer"></div>
                     </div>
                 </div>
@@ -860,6 +982,93 @@
         let tradeType = 'buy';
         let currentPeriod = '1mo';
         let currentInterval = '1d';
+        let aiPredictions = null;
+
+        // Socket.IO for real-time updates
+        let socket = null;
+        let isConnected = false;
+
+        function initSocketIO() {
+            socket = io('http://localhost:5000');
+
+            socket.on('connect', () => {
+                isConnected = true;
+                console.log('✅ Socket.IO connected');
+            });
+
+            socket.on('disconnect', () => {
+                isConnected = false;
+                console.log('❌ Socket.IO disconnected');
+            });
+
+            socket.on('price_update', (updates) => {
+                handlePriceUpdates(updates);
+            });
+
+            socket.on('connection_status', (data) => {
+                console.log('Connection status:', data);
+            });
+        }
+
+        function handlePriceUpdates(updates) {
+            // Update current stock price if it's in the updates
+            if (currentStock && updates[currentStock]) {
+                const update = updates[currentStock];
+                const oldPrice = currentStockData?.current_price;
+                const newPrice = update.price;
+
+                if (oldPrice && newPrice && oldPrice !== newPrice) {
+                    // Update price in DOM
+                    const priceElement = document.getElementById('stockPrice');
+                    if (priceElement) {
+                        const currency = getCurrency(currentStock);
+                        priceElement.textContent = `${currency}${newPrice.toFixed(2)}`;
+
+                        // Flash animation
+                        const flashColor = newPrice > oldPrice ? '#10B981' : '#EF4444';
+                        priceElement.style.transition = 'none';
+                        priceElement.style.backgroundColor = flashColor + '33';
+                        setTimeout(() => {
+                            priceElement.style.transition = 'background-color 1s ease';
+                            priceElement.style.backgroundColor = 'transparent';
+                        }, 100);
+                    }
+
+                    // Update change
+                    const changeElement = document.getElementById('stockChange');
+                    if (changeElement && update.change !== undefined) {
+                        const currency = getCurrency(currentStock);
+                        const changeClass = update.change >= 0 ? 'positive' : 'negative';
+                        changeElement.className = `stock-change ${changeClass}`;
+                        changeElement.textContent = `${update.change >= 0 ? '+' : ''}${currency}${update.change.toFixed(2)} (${update.change_percent >= 0 ? '+' : ''}${update.change_percent.toFixed(2)}%)`;
+                    }
+
+                    // Update current stock data
+                    if (currentStockData) {
+                        currentStockData.current_price = newPrice;
+                        currentStockData.change = update.change;
+                        currentStockData.change_percent = update.change_percent;
+                    }
+                }
+            }
+        }
+
+        function subscribeToStock(ticker) {
+            if (socket && isConnected) {
+                socket.emit('subscribe', { ticker });
+                console.log(`📊 Subscribed to ${ticker}`);
+            }
+        }
+
+        function unsubscribeFromStock(ticker) {
+            if (socket && isConnected) {
+                socket.emit('unsubscribe', { ticker });
+                console.log(`📊 Unsubscribed from ${ticker}`);
+            }
+        }
+
+        // Initialize Socket.IO on page load
+        initSocketIO();
 
         function changeTheme() {
             const theme = document.getElementById('themeSelector').value;
@@ -899,7 +1108,7 @@
             try {
                 const res = await fetch(`${API}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, email, password }) });
                 const data = await res.json();
-                if (data.success) { alert('Account created! Please login.'); showLogin(); }
+                if (data.success) { alert('Account created!'); showLogin(); }
                 else { document.getElementById('regError').textContent = data.error || 'Registration failed'; }
             } catch (e) { document.getElementById('regError').textContent = 'Network error'; }
         }
@@ -922,21 +1131,18 @@
             if (!currentUser) { showLoginModal(); return; }
             document.getElementById('profileModal').classList.add('active');
             document.getElementById('profileUsername').textContent = currentUser.username;
-            document.getElementById('profileEmail').textContent = currentUser.email || 'user@stockpro.com';
+            document.getElementById('profileEmail').textContent = currentUser.email || '';
             document.getElementById('profileBalance').textContent = `$${currentUser.balance?.toLocaleString() || '10,000'}`;
             document.getElementById('profileHoldings').textContent = currentUser.holdings?.length || 0;
             document.getElementById('profileProfit').textContent = `+$${(currentUser.profit || 0).toLocaleString()}`;
             document.getElementById('profileTrades').textContent = currentUser.trades || 0;
-            const holdings = currentUser.holdings || [];
-            const portfolioHtml = holdings.length > 0 ? holdings.map(h => `<div class="portfolio-item"><div><div style="font-weight: 700;">${h.ticker}</div><div style="font-size: 0.85rem; color: var(--text-secondary);">${h.quantity} shares</div></div><div style="text-align: right;"><div style="font-weight: 700;">${getCurrency(h.ticker)}${(h.quantity * h.avgPrice).toFixed(2)}</div><div class="${h.profit >= 0 ? 'positive' : 'negative'}" style="font-size: 0.85rem;">${h.profit >= 0 ? '+' : ''}${h.profitPercent?.toFixed(2) || 0}%</div></div></div>`).join('') : '<p style="color: var(--text-secondary);">No holdings yet. Start trading!</p>';
-            document.getElementById('portfolioList').innerHTML = `<h3 style="margin-bottom: 1rem;">Your Portfolio</h3>${portfolioHtml}`;
         }
 
         function openTradeModal(type) {
             if (!currentUser) { showLoginModal(); return; }
             tradeType = type;
             document.getElementById('tradeModal').classList.add('active');
-            document.getElementById('tradeModalTitle').textContent = type === 'buy' ? '🛒 Buy Stock' : '💰 Sell Stock';
+            document.getElementById('tradeModalTitle').textContent = type === 'buy' ? '🛒 Buy' : '💰 Sell';
             document.getElementById('tradeConfirmBtn').textContent = type === 'buy' ? 'Confirm Buy' : 'Confirm Sell';
             document.getElementById('tradeConfirmBtn').style.background = type === 'buy' ? 'var(--success)' : 'var(--danger)';
             document.getElementById('tradeStockName').textContent = currentStockData?.name || currentStock;
@@ -965,8 +1171,7 @@
                 currentUser.balance -= total;
                 currentUser.holdings = currentUser.holdings || [];
                 const existing = currentUser.holdings.find(h => h.ticker === currentStock);
-                if (existing) { existing.quantity += qty; existing.avgPrice = (existing.avgPrice * (existing.quantity - qty) + price * qty) / existing.quantity; }
-                else { currentUser.holdings.push({ ticker: currentStock, quantity: qty, avgPrice: price, profit: 0, profitPercent: 0 }); }
+                if (existing) { existing.quantity += qty; } else { currentUser.holdings.push({ ticker: currentStock, quantity: qty, avgPrice: price }); }
             } else {
                 const existing = currentUser.holdings?.find(h => h.ticker === currentStock);
                 if (!existing || existing.quantity < qty) { alert('Insufficient shares!'); return; }
@@ -978,7 +1183,7 @@
             localStorage.setItem('user', JSON.stringify(currentUser));
             updateUI();
             document.getElementById('tradeModal').classList.remove('active');
-            alert(`${tradeType === 'buy' ? 'Bought' : 'Sold'} ${qty} shares of ${currentStock} for ${getCurrency(currentStock)}${total.toFixed(2)}`);
+            alert(`${tradeType === 'buy' ? 'Bought' : 'Sold'} ${qty} shares!`);
         }
 
         async function loadCategories() {
@@ -1017,15 +1222,24 @@
         }
 
         function getCurrency(ticker) {
-            if (ticker.endsWith('.NS') || ticker.endsWith('.BO')) return '₹';
-            if (ticker.endsWith('.L')) return '£';
+            if (ticker && (ticker.endsWith('.NS') || ticker.endsWith('.BO'))) return '₹';
+            if (ticker && ticker.endsWith('.L')) return '£';
             return '$';
         }
 
         async function selectStock(ticker) {
+            // Unsubscribe from previous stock
+            if (currentStock) {
+                unsubscribeFromStock(currentStock);
+            }
+
             currentStock = ticker;
             document.getElementById('homepage').classList.add('hidden');
             document.getElementById('stockDetail').classList.remove('hidden');
+
+            // Subscribe to real-time updates for this stock
+            subscribeToStock(ticker);
+
             try {
                 const res = await fetch(`${API}/stock/${ticker}`);
                 const data = await res.json();
@@ -1033,7 +1247,7 @@
                 loadNews(ticker);
                 loadAI(ticker);
                 loadChart(ticker, '1mo', '1d');
-            } catch (e) { console.error('Stock detail error:', e); }
+            } catch (e) { console.error('Stock error:', e); }
         }
 
         function displayStockDetail(stock) {
@@ -1050,53 +1264,105 @@
             document.getElementById('rangeLow').textContent = `${currency}${low.toFixed(2)}`;
             document.getElementById('rangeHigh').textContent = `${currency}${high.toFixed(2)}`;
             document.getElementById('rangeMarker').style.left = `${Math.min(100, Math.max(0, percentage))}%`;
-            document.getElementById('rangeCurrent').textContent = `Current: ${currency}${current.toFixed(2)} (${percentage.toFixed(0)}% of range)`;
-            document.getElementById('stockInfo').innerHTML = `<div style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px;"><div style="color: var(--text-secondary); font-size: 0.9rem;">Market Cap</div><div style="font-weight: 700;">${stock.market_cap ? currency + (stock.market_cap / 1e9).toFixed(2) + 'B' : 'N/A'}</div></div><div style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px;"><div style="color: var(--text-secondary); font-size: 0.9rem;">P/E Ratio</div><div style="font-weight: 700;">${stock.pe_ratio?.toFixed(2) || 'N/A'}</div></div><div style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px;"><div style="color: var(--text-secondary); font-size: 0.9rem;">Volume</div><div style="font-weight: 700;">${stock.volume?.toLocaleString() || 'N/A'}</div></div><div style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px;"><div style="color: var(--text-secondary); font-size: 0.9rem;">Day Range</div><div style="font-weight: 700;">${stock.day_low?.toFixed(2) || 'N/A'} - ${stock.day_high?.toFixed(2) || 'N/A'}</div></div>`;
+            document.getElementById('rangeCurrent').textContent = `Current: ${currency}${current.toFixed(2)} (${percentage.toFixed(0)}%)`;
+            document.getElementById('stockInfo').innerHTML = `<div style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px;"><div style="color: var(--text-secondary);">Market Cap</div><div style="font-weight: 700;">${stock.market_cap ? currency + (stock.market_cap / 1e9).toFixed(2) + 'B' : 'N/A'}</div></div><div style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px;"><div style="color: var(--text-secondary);">P/E</div><div style="font-weight: 700;">${stock.pe_ratio?.toFixed(2) || 'N/A'}</div></div><div style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px;"><div style="color: var(--text-secondary);">Volume</div><div style="font-weight: 700;">${stock.volume?.toLocaleString() || 'N/A'}</div></div><div style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px;"><div style="color: var(--text-secondary);">Day Range</div><div style="font-weight: 700;">${stock.day_low?.toFixed(2) || 'N/A'} - ${stock.day_high?.toFixed(2) || 'N/A'}</div></div>`;
         }
 
         async function loadNews(ticker) {
+            document.getElementById('newsContainer').innerHTML = '<div class="loading">Loading news...</div>';
             try {
                 const res = await fetch(`${API}/stock/${ticker}/news?limit=5`);
                 const data = await res.json();
-                if (data.success && data.news.length > 0) {
-                    document.getElementById('newsContainer').innerHTML = data.news.map(article => `<div style="padding: 1rem; margin: 1rem 0; background: var(--bg-secondary); border-radius: 8px; cursor: pointer; border-left: 4px solid var(--accent);" onclick="window.open('${article.link}', '_blank')"><div style="font-weight: 600; margin-bottom: 0.5rem;">${article.title}</div><div style="font-size: 0.85rem; color: var(--text-secondary);">${article.publisher} • ${new Date(article.published).toLocaleDateString()}</div></div>`).join('');
+                if (data.success && data.news && data.news.length > 0) {
+                    const validNews = data.news.filter(a => a.title && a.title !== 'No title' && a.link);
+                    if (validNews.length > 0) {
+                        document.getElementById('newsContainer').innerHTML = validNews.map(article => `<div style="padding: 1rem; margin: 1rem 0; background: var(--bg-secondary); border-radius: 8px; cursor: pointer; border-left: 4px solid var(--accent);" onclick="window.open('${article.link}', '_blank')"><div style="font-weight: 600; margin-bottom: 0.5rem;">${article.title}</div><div style="font-size: 0.85rem; color: var(--text-secondary);">${article.publisher || 'News'}</div></div>`).join('');
+                    } else { document.getElementById('newsContainer').innerHTML = '<p style="color: var(--text-secondary);">No news available</p>'; }
                 } else { document.getElementById('newsContainer').innerHTML = '<p style="color: var(--text-secondary);">No news available</p>'; }
-            } catch (e) { document.getElementById('newsContainer').innerHTML = '<p>Error loading news</p>'; }
+            } catch (e) { document.getElementById('newsContainer').innerHTML = '<p style="color: var(--text-secondary);">Unable to load news</p>'; }
         }
 
         async function loadAI(ticker) {
-            document.getElementById('aiPrediction').innerHTML = '<div class="loading">🔮 AI is analyzing...</div>';
+            document.getElementById('aiPrediction').innerHTML = '<div class="loading">🔮 AI analyzing...</div>';
             try {
                 const res = await fetch(`${API}/stock/${ticker}/predict`);
                 const data = await res.json();
                 if (data.success) {
+                    aiPredictions = data.analysis;
                     const pred = data.analysis.prediction;
                     const signals = data.analysis.technical_signals || {};
-                    document.getElementById('aiPrediction').innerHTML = `<div class="ai-panel"><div class="prediction-value">${getCurrency(ticker)}${pred.predictions['1d']?.toFixed(2) || 'N/A'}</div><div class="prediction-label">Tomorrow's Predicted Price</div><div class="recommendation-badge">${pred.recommendation || 'HOLD'}</div><div style="font-size: 0.85rem; margin-top: 0.5rem;">Confidence: ${(pred.confidence * 100).toFixed(0)}%</div></div><div class="tech-indicators"><div class="indicator-item"><div class="indicator-label">RSI (14)</div><div class="indicator-value ${signals.rsi < 30 ? 'positive' : signals.rsi > 70 ? 'negative' : ''}">${signals.rsi?.toFixed(1) || 'N/A'}</div></div><div class="indicator-item"><div class="indicator-label">MACD</div><div class="indicator-value ${signals.macd_trend === 'Bullish' ? 'positive' : 'negative'}">${signals.macd_trend || 'N/A'}</div></div><div class="indicator-item"><div class="indicator-label">vs SMA-50</div><div class="indicator-value ${signals.price_vs_sma50 === 'Above' ? 'positive' : 'negative'}">${signals.price_vs_sma50 || 'N/A'}</div></div><div class="indicator-item"><div class="indicator-label">Trend</div><div class="indicator-value">${pred.trend || 'N/A'}</div></div></div>`;
+                    const currency = getCurrency(ticker);
+
+                    // Get next trading day info (skips weekends)
+                    const nextTradingDayName = pred.next_trading_day_name || 'Next Trading Day';
+                    const nextTradingDate = pred.next_trading_day || '';
+
+                    const intraday = pred.intraday;
+                    if (intraday) {
+                        document.getElementById('intradayPrediction').classList.remove('hidden');
+                        document.getElementById('intradayPredTitle').innerHTML = `🔮 ${nextTradingDayName}'s Prediction (${nextTradingDate})`;
+                        document.getElementById('predOpen').textContent = `${currency}${intraday.open?.toFixed(2) || 'N/A'}`;
+                        document.getElementById('predHigh').textContent = `${currency}${intraday.high?.toFixed(2) || 'N/A'}`;
+                        document.getElementById('predLow').textContent = `${currency}${intraday.low?.toFixed(2) || 'N/A'}`;
+                        document.getElementById('predClose').textContent = `${currency}${intraday.close?.toFixed(2) || 'N/A'}`;
+                    }
+
+                    document.getElementById('aiPrediction').innerHTML = `
+                        <div class="ai-panel">
+                            <div class="prediction-value">${currency}${pred.predictions['1d']?.toFixed(2) || 'N/A'}</div>
+                            <div class="prediction-label">${nextTradingDayName}'s Close (${nextTradingDate})</div>
+                            <div class="recommendation-badge" style="background: ${pred.recommendation?.includes('BUY') ? 'rgba(16,185,129,0.3)' : pred.recommendation?.includes('SELL') ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.2)'};">${pred.recommendation || 'HOLD'}</div>
+                            <div style="font-size: 0.85rem; margin-top: 0.5rem;">Confidence: ${(pred.confidence * 100).toFixed(0)}%</div>
+                        </div>
+                        <div class="tech-indicators">
+                            <div class="indicator-item"><div class="indicator-label">RSI</div><div class="indicator-value ${signals.rsi < 30 ? 'positive' : signals.rsi > 70 ? 'negative' : ''}">${signals.rsi?.toFixed(1) || 'N/A'}</div></div>
+                            <div class="indicator-item"><div class="indicator-label">MACD</div><div class="indicator-value ${signals.macd_trend === 'Bullish' ? 'positive' : 'negative'}">${signals.macd_trend || 'N/A'}</div></div>
+                            <div class="indicator-item"><div class="indicator-label">SMA-50</div><div class="indicator-value ${signals.price_vs_sma50 === 'Above' ? 'positive' : 'negative'}">${signals.price_vs_sma50 || 'N/A'}</div></div>
+                            <div class="indicator-item"><div class="indicator-label">Trend</div><div class="indicator-value">${pred.trend || 'N/A'}</div></div>
+                        </div>`;
                 }
-            } catch (e) { document.getElementById('aiPrediction').innerHTML = '<p>Error loading AI prediction</p>'; }
+            } catch (e) { document.getElementById('aiPrediction').innerHTML = '<p>Error loading AI</p>'; }
         }
 
         async function loadChart(ticker, period = '1mo', interval = '1d') {
             currentPeriod = period;
             currentInterval = interval;
             document.querySelectorAll('.timeframe-btn').forEach(btn => btn.classList.remove('active'));
-            if (event?.target?.classList) event.target.classList.add('active');
+            if (event && event.target && event.target.classList) event.target.classList.add('active');
+
             try {
                 const res = await fetch(`${API}/stock/${ticker}/history?period=${period}&interval=${interval}`);
                 const data = await res.json();
+
                 if (data.success && data.data) {
                     const chartContainer = document.getElementById('candlestickChart');
                     chartContainer.innerHTML = '';
                     if (chart) { chart.remove(); chart = null; }
+
+                    const isIndianStock = ticker.endsWith('.NS') || ticker.endsWith('.BO');
+                    const isIntraday = interval.includes('m') || interval === '1h';
+                    const IST_OFFSET = 19800;
+
                     chart = LightweightCharts.createChart(chartContainer, {
-                        layout: { background: { type: 'solid', color: 'transparent' }, textColor: getComputedStyle(document.body).getPropertyValue('--text-primary').trim() || '#d1d4dc' },
-                        grid: { vertLines: { color: 'rgba(197, 203, 206, 0.1)' }, horzLines: { color: 'rgba(197, 203, 206, 0.1)' } },
+                        layout: {
+                            background: { type: 'solid', color: 'transparent' },
+                            textColor: getComputedStyle(document.body).getPropertyValue('--text-primary').trim() || '#d1d4dc'
+                        },
+                        grid: {
+                            vertLines: { color: 'rgba(197, 203, 206, 0.1)' },
+                            horzLines: { color: 'rgba(197, 203, 206, 0.1)' }
+                        },
                         rightPriceScale: { borderColor: 'rgba(197, 203, 206, 0.3)' },
-                        timeScale: { borderColor: 'rgba(197, 203, 206, 0.3)', timeVisible: true },
-                        height: 350,
+                        timeScale: { borderColor: 'rgba(197, 203, 206, 0.3)', timeVisible: true, secondsVisible: false },
+                        height: 400,
                     });
-                    const chartData = data.data.timestamps.map((timestamp, i) => ({ time: Math.floor(new Date(timestamp).getTime() / 1000), open: data.data.open[i], high: data.data.high[i], low: data.data.low[i], close: data.data.close[i], value: data.data.close[i] })).filter(d => d.open && d.high && d.low && d.close);
+
+                    const chartData = data.data.timestamps.map((timestamp, i) => {
+                        let time = Math.floor(new Date(timestamp).getTime() / 1000);
+                        if (isIndianStock && isIntraday) { time += IST_OFFSET; }
+                        return { time, open: data.data.open[i], high: data.data.high[i], low: data.data.low[i], close: data.data.close[i] };
+                    }).filter(d => d.open && d.high && d.low && d.close);
+
                     let series;
                     if (chartType === 'candlestick') {
                         series = chart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350', borderUpColor: '#26a69a', borderDownColor: '#ef5350', wickUpColor: '#26a69a', wickDownColor: '#ef5350' });
@@ -1108,18 +1374,75 @@
                         series = chart.addAreaSeries({ topColor: 'rgba(41, 98, 255, 0.4)', bottomColor: 'rgba(41, 98, 255, 0.0)', lineColor: '#2962FF', lineWidth: 2 });
                         series.setData(chartData.map(d => ({ time: d.time, value: d.close })));
                     }
-                    const volumeSeries = chart.addHistogramSeries({ color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: '', scaleMargins: { top: 0.85, bottom: 0 } });
-                    volumeSeries.setData(data.data.timestamps.map((timestamp, i) => ({ time: Math.floor(new Date(timestamp).getTime() / 1000), value: data.data.volume[i], color: data.data.close[i] >= data.data.open[i] ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)' })).filter(d => d.value));
+
+                    if (aiPredictions && aiPredictions.prediction) {
+                        const pred = aiPredictions.prediction;
+                        const lastPoint = chartData[chartData.length - 1];
+                        const currentPrice = lastPoint?.close;
+                        const intraday = pred.intraday || {};
+                        const predClose = intraday.close || pred.predictions['1d'];
+                        const daysUntilTrading = pred.days_until_trading || 1;
+
+                        if (currentPrice && predClose) {
+                            const isUptrend = predClose > currentPrice;
+                            const trendColor = isUptrend ? '#10B981' : '#EF4444';
+                            const predictionDay = lastPoint.time + (86400 * (daysUntilTrading + 1));
+
+                            const predSeries = chart.addLineSeries({ color: trendColor, lineWidth: 3, lineStyle: 2 });
+                            predSeries.setData([{ time: lastPoint.time, value: currentPrice }, { time: predictionDay, value: predClose }]);
+                            predSeries.setMarkers([{ time: predictionDay, position: isUptrend ? 'aboveBar' : 'belowBar', color: trendColor, shape: isUptrend ? 'arrowUp' : 'arrowDown', text: '🔮' }]);
+
+                            if (chartType === 'candlestick' && intraday.open) {
+                                const predCandleSeries = chart.addCandlestickSeries({ upColor: 'rgba(16, 185, 129, 0.5)', downColor: 'rgba(239, 68, 68, 0.5)', borderUpColor: '#10B981', borderDownColor: '#EF4444', wickUpColor: '#10B981', wickDownColor: '#EF4444' });
+                                predCandleSeries.setData([{ time: predictionDay, open: intraday.open, high: intraday.high, low: intraday.low, close: intraday.close }]);
+                            }
+
+                            const nextDayName = pred.next_trading_day_name || 'Next Day';
+                            updateTrendIndicator(isUptrend, predClose, currentPrice, pred.confidence, pred.recommendation, nextDayName);
+                        }
+                    }
+
+                    const volumeSeries = chart.addHistogramSeries({
+                        color: '#26a69a',
+                        priceFormat: { type: 'volume' },
+                        priceScaleId: '',
+                        scaleMargins: { top: 0.95, bottom: 0 },
+                        priceLineVisible: false
+                    });
+                    const volumeData = data.data.timestamps.map((timestamp, i) => {
+                        let time = Math.floor(new Date(timestamp).getTime() / 1000);
+                        if (isIndianStock && isIntraday) { time += IST_OFFSET; }
+                        return { time, value: data.data.volume[i], color: data.data.close[i] >= data.data.open[i] ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)' };
+                    }).filter(d => d.value);
+                    volumeSeries.setData(volumeData);
+
                     chart.timeScale().fitContent();
                 }
             } catch (e) { console.error('Chart error:', e); }
         }
 
+        function updateTrendIndicator(isUptrend, predictedPrice, currentPrice, confidence, recommendation, dayName) {
+            const changePercent = ((predictedPrice - currentPrice) / currentPrice * 100).toFixed(2);
+            const currency = getCurrency(currentStock);
+            document.getElementById('trendIndicator').innerHTML = `
+                <div class="trend-indicator ${isUptrend ? 'uptrend' : 'downtrend'}">
+                    <div style="font-size: 1.8rem; font-weight: 700;">${isUptrend ? '📈 UPTREND' : '📉 DOWNTREND'}</div>
+                    <div style="font-size: 1rem; margin-top: 0.5rem;">${dayName}: ${currency}${predictedPrice.toFixed(2)} (${isUptrend ? '+' : ''}${changePercent}%)</div>
+                    <div style="font-size: 0.9rem; margin-top: 0.25rem;">Confidence: ${(confidence * 100).toFixed(0)}% | ${recommendation}</div>
+                    <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(255,255,255,0.15); border-radius: 8px;">
+                        ${isUptrend ? '✅ Consider BUYING' : '⚠️ Consider WAITING/SELLING'}
+                    </div>
+                </div>`;
+        }
+
         function backToHome() {
             document.getElementById('homepage').classList.remove('hidden');
             document.getElementById('stockDetail').classList.add('hidden');
+            document.getElementById('intradayPrediction').classList.add('hidden');
             currentStock = null;
             currentStockData = null;
+            aiPredictions = null;
+            document.getElementById('trendIndicator').innerHTML = '';
             if (chart) { chart.remove(); chart = null; }
         }
 
@@ -1135,7 +1458,7 @@
                     const data = await res.json();
                     if (data.success && data.results.length > 0) {
                         resultsContainer.classList.remove('hidden');
-                        resultsContainer.innerHTML = data.results.map(stock => `<div class="search-result-item" onclick="selectStock('${stock.ticker}'); document.getElementById('searchResults').classList.add('hidden'); document.getElementById('searchInput').value = '';"><div><div style="font-weight: 700; color: var(--accent);">${stock.ticker}</div><div style="font-size: 0.9rem; color: var(--text-secondary);">${stock.name}</div></div><div style="font-size: 0.85rem; color: var(--text-secondary);">${stock.exchange || ''}</div></div>`).join('');
+                        resultsContainer.innerHTML = data.results.map(stock => `<div class="search-result-item" onclick="selectStock('${stock.ticker}'); document.getElementById('searchResults').classList.add('hidden'); document.getElementById('searchInput').value = '';"><div><div style="font-weight: 700; color: var(--accent);">${stock.ticker}</div><div style="font-size: 0.9rem; color: var(--text-secondary);">${stock.name}</div></div></div>`).join('');
                     } else { resultsContainer.classList.add('hidden'); }
                 } catch (e) { console.error('Search error:', e); }
             }, 300);

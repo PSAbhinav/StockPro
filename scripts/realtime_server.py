@@ -20,6 +20,7 @@ from advanced_fetcher import AdvancedStockFetcher
 from database import WatchlistManager, DatabaseManager
 from ai_predictor import StockPredictor
 from portfolio_manager import PortfolioManager
+from realtime_updater import RealtimeUpdater, setup_socketio_handlers
 
 # Configure logging
 logging.basicConfig(
@@ -46,11 +47,16 @@ db = DatabaseManager()
 predictor = StockPredictor(use_lstm=False)  # Start with faster model
 portfolio = PortfolioManager()
 
+# Initialize real-time updater
+realtime_updater = RealtimeUpdater(socketio, fetcher)
+setup_socketio_handlers(socketio, realtime_updater)
+
 # Global state
 server_start_time = datetime.now()
 update_count = 0
 connected_clients = 0
 UPDATE_INTERVAL = 15
+
 
 
 @app.route('/')
@@ -556,12 +562,17 @@ def start_server(host='127.0.0.1', port=5000, debug=False):
     logger.info("ADVANCED STOCK MARKET PLATFORM SERVER")
     logger.info("=" * 70)
     logger.info(f"Server starting on http://{host}:{port}")
-    logger.info("Features: Stock Search, AI Predictions, Watchlists, News")
+    logger.info("Features: Stock Search, AI Predictions, Watchlists, News, Real-Time Updates")
     logger.info("=" * 70)
     
     # Start background updater
     updater_thread = threading.Thread(target=background_updater, daemon=True)
     updater_thread.start()
+    logger.info("Background updater started")
+    
+    # Start real-time price updater
+    realtime_updater.start()
+    logger.info("Real-time price updater started")
     
     # Start server
     socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=True)
