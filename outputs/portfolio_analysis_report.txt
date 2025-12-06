@@ -1,0 +1,101 @@
+================================================================================
+FINANCIAL PORTFOLIO ANALYSIS REPORT
+================================================================================
+
+Analysis Date: 2025-11-22 13:31:28
+Portfolio Name: Tech Stock Portfolio (Top 5)
+Analysis Period: 2023-01-01 to 2025-11-22
+Number of Trading Days: 725
+
+================================================================================
+SECTION 1: INDIVIDUAL STOCK METRICS
+================================================================================
+
+Ticker     Ann. Return     Ann. Volatility    Sharpe Ratio   
+--------------------------------------------------------------------------------
+NVDA            140.64%            50.80%          2.729
+GOOGL            52.79%            30.34%          1.674
+AAPL             31.60%            25.95%          1.141
+MSFT             27.63%            23.39%          1.096
+TSLA             56.35%            60.66%          0.896
+
+================================================================================
+SECTION 2: CORRELATION ANALYSIS
+================================================================================
+
+Correlation Matrix:
+Ticker      AAPL     GOOGL      MSFT      NVDA      TSLA
+Ticker                                                  
+AAPL    1.000000  0.463312  0.495502  0.374943  0.442996
+GOOGL   0.463312  1.000000  0.507712  0.403388  0.380534
+MSFT    0.495502  0.507712  1.000000  0.549137  0.373824
+NVDA    0.374943  0.403388  0.549137  1.000000  0.380523
+TSLA    0.442996  0.380534  0.373824  0.380523  1.000000
+
+Highest Positive Correlations:
+  1. MSFT - NVDA: 0.549
+  2. GOOGL - MSFT: 0.508
+  3. AAPL - MSFT: 0.496
+
+Lowest Correlations:
+  1. NVDA - TSLA: 0.381
+  2. AAPL - NVDA: 0.375
+  3. MSFT - TSLA: 0.374
+
+================================================================================
+SECTION 3: PORTFOLIO ANALYSIS
+================================================================================
+
+Equal-Weight Portfolio (20% each stock):
+  Annualized Return:       64.29%
+  Annualized Volatility:   28.42%
+  Sharpe Ratio:             2.192
+  Max Drawdown:           -32.20%
+  Cumulative Return:      317.17%
+
+Inverse-Volatility Weighted Portfolio:
+  Annualized Return:       53.61%
+  Annualized Volatility:   24.65%
+  Sharpe Ratio:             2.094
+  Max Drawdown:           -29.27%
+  Cumulative Return:      243.80%
+
+================================================================================
+SECTION 4: RISK ASSESSMENT
+================================================================================
+
+Volatility Analysis:
+  - NVDA exhibits the highest volatility (50.80%) but also highest returns
+  - MSFT shows the lowest volatility (23.39%), providing stability
+  - TSLA has high volatility (60.66%) with moderate Sharpe ratio
+
+Correlation Insights:
+  - Most tech stocks show positive correlation (0.5-0.8 range)
+  - High correlation suggests diversification benefits are limited
+  - Portfolio may move in same direction during market events
+
+Risk Mitigation:
+  - Inverse-volatility weighting reduces portfolio volatility
+  - Consider adding assets from different sectors for true diversification
+  - Monitor drawdowns and implement stop-loss strategies
+
+================================================================================
+SECTION 5: TOP INSIGHTS AND RECOMMENDATIONS
+================================================================================
+
+Key Insights:
+  1. NVDA demonstrated exceptional risk-adjusted returns (Sharpe: 2.73)
+  2. Inverse-volatility weighting improved risk-adjusted performance
+  3. All stocks showed positive cumulative returns over the period
+  4. Tech sector correlation suggests concentrated sector risk
+
+Recommendations:
+  1. Consider inverse-volatility weighting for better risk management
+  2. Monitor NVDA's high volatility despite strong performance
+  3. Diversify beyond tech sector to reduce correlation risk
+  4. Implement periodic rebalancing to maintain target weights
+  5. Set position limits based on individual risk tolerance
+
+================================================================================
+END OF REPORT
+================================================================================

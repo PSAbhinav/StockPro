@@ -1,0 +1,118 @@
+{
+  "metadata": {
+    "analysis_date": "2025-11-22",
+    "last_updated": "2025-11-22 13:31:28",
+    "stocks_analyzed": [
+      "AAPL",
+      "GOOGL",
+      "MSFT",
+      "NVDA",
+      "TSLA"
+    ],
+    "period_start": "2023-01-01",
+    "period_end": "2025-11-22",
+    "trading_days": 725
+  },
+  "individual_stocks": {
+    "AAPL": {
+      "annualized_return": 0.316,
+      "annualized_volatility": 0.2595,
+      "sharpe_ratio": 1.14,
+      "max_drawdown": -0.3336,
+      "cumulative_return": 1.2035
+    },
+    "GOOGL": {
+      "annualized_return": 0.5279,
+      "annualized_volatility": 0.3034,
+      "sharpe_ratio": 1.67,
+      "max_drawdown": -0.2981,
+      "cumulative_return": 2.3856
+    },
+    "MSFT": {
+      "annualized_return": 0.2763,
+      "annualized_volatility": 0.2339,
+      "sharpe_ratio": 1.1,
+      "max_drawdown": -0.2373,
+      "cumulative_return": 1.0177
+    },
+    "NVDA": {
+      "annualized_return": 1.4063999999999999,
+      "annualized_volatility": 0.508,
+      "sharpe_ratio": 2.73,
+      "max_drawdown": -0.3688,
+      "cumulative_return": 11.5078
+    },
+    "TSLA": {
+      "annualized_return": 0.5635,
+      "annualized_volatility": 0.6065999999999999,
+      "sharpe_ratio": 0.9,
+      "max_drawdown": -0.5377000000000001,
+      "cumulative_return": 2.6179
+    }
+  },
+  "equal_weight_portfolio": {
+    "annualized_return": 0.6429056087600569,
+    "annualized_volatility": 0.2842117803995693,
+    "sharpe_ratio": 2.19169524881876,
+    "max_drawdown": -0.3219904914832777,
+    "cumulative_return": 3.171709544823681,
+    "weights": {
+      "AAPL": 0.2,
+      "GOOGL": 0.2,
+      "MSFT": 0.2,
+      "NVDA": 0.2,
+      "TSLA": 0.2
+    }
+  },
+  "inverse_volatility_portfolio": {
+    "annualized_return": 0.5360679164098552,
+    "annualized_volatility": 0.24648408034427363,
+    "sharpe_ratio": 2.0937170290634737,
+    "max_drawdown": -0.29267861281165336,
+    "cumulative_return": 2.4379520431318262,
+    "weights": {
+      "AAPL": 0.25617233009504997,
+      "GOOGL": 0.21911688521472864,
+      "MSFT": 0.2842382603393815,
+      "NVDA": 0.1308679962949126,
+      "TSLA": 0.1096045280559271
+    }
+  },
+  "correlation_matrix": {
+    "AAPL": {
+      "AAPL": 1.0,
+      "GOOGL": 0.46331162576481255,
+      "MSFT": 0.4955016756561508,
+      "NVDA": 0.3749427629919304,
+      "TSLA": 0.44299584832832795
+    },
+    "GOOGL": {
+      "AAPL": 0.46331162576481255,
+      "GOOGL": 1.0,
+      "MSFT": 0.5077117082987733,
+      "NVDA": 0.4033876144601904,
+      "TSLA": 0.38053388674847605
+    },
+    "MSFT": {
+      "AAPL": 0.4955016756561508,
+      "GOOGL": 0.5077117082987733,
+      "MSFT": 1.0,
+      "NVDA": 0.5491368163405022,
+      "TSLA": 0.3738237147459442
+    },
+    "NVDA": {
+      "AAPL": 0.3749427629919304,
+      "GOOGL": 0.4033876144601904,
+      "MSFT": 0.5491368163405022,
+      "NVDA": 1.0,
+      "TSLA": 0.38052260340274086
+    },
+    "TSLA": {
+      "AAPL": 0.44299584832832795,
+      "GOOGL": 0.38053388674847605,
+      "MSFT": 0.3738237147459442,
+      "NVDA": 0.38052260340274086,
+      "TSLA": 1.0
+    }
+  }
+}
