@@ -1,15 +1,3 @@
-class AdvancedStockFetcher:
-    """Advanced stock data fetcher with comprehensive search."""
-    
-    # Comprehensive stock database for search
-    INDIAN_STOCKS = {
-        # Large Cap
-        'RELIANCE.NS': 'Reliance Industries Ltd',
-        'TCS.NS': 'Tata Consultancy Services',
-        'HDFCBANK.NS': 'HDFC Bank Ltd',
-        'INFY.NS': 'Infosys Ltd',
-        'ICICIBANK.NS': 'ICICI Bank Ltd',
-        'HINDUNILVR.NS': 'Hindustan Unilever',
         'SBIN.NS': 'State Bank of India',
         'BHARTIARTL.NS': 'Bharti Airtel',
         'ITC.NS': 'ITC Ltd',
@@ -169,22 +157,17 @@ class AdvancedStockFetcher:
     }
     
     def __init__(self, cache_ttl: int = 60):
-        """Initialize with caching and NSE integration."""
+        """Initialize with caching."""
         self.cache_ttl = cache_ttl
         self.cache = {}
         self.ALL_STOCKS = {**self.INDIAN_STOCKS, **self.US_STOCKS}
-        self.use_nse = NSE_AVAILABLE
-        logger.info(f"AdvancedStockFetcher initialized (NSE: {self.use_nse})")
+        logger.info("AdvancedStockFetcher initialized (yfinance)")
     
     def _is_indian_stock(self, ticker: str) -> bool:
         """Check if ticker is an Indian stock."""
         return ticker.endswith('.NS') or ticker.endswith('.BO')
     
-    def _normalize_data(self, data: Dict, source: str) -> Dict:
-        """Normalize data from different sources to unified format."""
-        # Data is already in correct format from both NSE and yfinance
-        data['source'] = source
-        return data
+
     
     def search_stock(self, query: str, limit: int = 15) -> List[Dict]:
         """
@@ -285,20 +268,8 @@ class AdvancedStockFetcher:
         }
     
     def get_comprehensive_data(self, ticker: str) -> Optional[Dict]:
-        """Get comprehensive market data for a stock with hybrid NSE/yfinance routing."""
+        """Get comprehensive market data for a stock using yfinance."""
         try:
-            # Try NSE first for Indian stocks
-            if self.use_nse and self._is_indian_stock(ticker):
-                logger.info(f"Attempting to fetch {ticker} from NSE...")
-                nse_data = nse_fetcher.get_quote(ticker)
-                
-                if nse_data:
-                    logger.info(f"Successfully fetched {ticker} from NSE")
-                    return self._normalize_data(nse_data, 'NSE')
-                else:
-                    logger.warning(f"NSE fetch failed for {ticker}, falling back to yfinance")
-            
-            # Fallback to yfinance (for US stocks or NSE failure)
             logger.info(f"Fetching {ticker} from yfinance...")
             stock = yf.Ticker(ticker)
             info = stock.info
