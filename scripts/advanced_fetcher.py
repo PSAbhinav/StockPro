@@ -1,27 +1,3 @@
-"""
-Advanced Data Fetcher for Stock Market Platform
-ENHANCED VERSION - Finds ANY company including all subsidiaries
-"""
-
-import yfinance as yf
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
-import logging
-
-# Import NSE fetcher for Indian stocks
-try:
-    from nse_fetcher import nse_fetcher
-    NSE_AVAILABLE = True
-except ImportError:
-    NSE_AVAILABLE = False
-    logging.warning("NSE fetcher not available, using yfinance for all stocks")
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
 class AdvancedStockFetcher:
     """Advanced stock data fetcher with comprehensive search."""
     
