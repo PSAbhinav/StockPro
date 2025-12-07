@@ -575,10 +575,34 @@ def background_updater():
     
     logger.info("Background updater started")
     
+    def is_market_hours():
+        """Check if it's currently market hours (9:15 AM - 3:30 PM IST for weekdays)."""
+        from datetime import datetime
+        now = datetime.now()
+        
+        # Check if weekend
+        if now.weekday() >= 5:  # Saturday = 5, Sunday = 6
+            return False
+        
+        # Market hours: 9:15 AM to 3:30 PM IST
+        market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+        market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+        
+        return market_open <= now <= market_close
+    
     while True:
         try:
+            # Only update if clients connected AND market is open
             if connected_clients > 0:
-                # Get default watchlist
+                market_open = is_market_hours()
+                
+                if not market_open:
+                    # Market closed - sleep longer and skip fetching
+                    logger.debug(f"Market closed - skipping update (clients: {connected_clients})")
+                    time.sleep(UPDATE_INTERVAL * 4)  # Check every minute instead of 15s
+                    continue
+                
+                # Market is open - fetch updates
                 tickers = watchlist_manager.get_watchlist_tickers('Default')
                 
                 # Fetch data for all tickers
@@ -589,7 +613,7 @@ def background_updater():
                         updates[ticker] = stats
                 
                 # Broadcast updates
-                socketio.emit('watchlist_update', updates, broadcast=True)
+                socketio.emit('watchlist_update', updates)
                 update_count += 1
                 logger.info(f"Broadcast update #{update_count} to {connected_clients} clients")
             
@@ -597,6 +621,7 @@ def background_updater():
         except Exception as e:
             logger.error(f"Background updater error: {str(e)}")
             time.sleep(UPDATE_INTERVAL)
+
 
 
 def start_server(host='127.0.0.1', port=5000, debug=False):
