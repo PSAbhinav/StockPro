@@ -21,6 +21,7 @@ from database import WatchlistManager, DatabaseManager
 from ai_predictor import StockPredictor
 from portfolio_manager import PortfolioManager
 from realtime_updater import RealtimeUpdater, setup_socketio_handlers
+from portfolio_analytics import get_real_time_portfolio_value, get_sector_allocation, export_portfolio_to_csv
 
 # Configure logging
 logging.basicConfig(
@@ -245,8 +246,50 @@ def api_remove_from_watchlist():
         else:
             return jsonify({'success': False, 'error': 'Failed to remove stock'}), 500
     except Exception as e:
-        logger.error(f"Remove from watchlist error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ===== PORTFOLIO ANALYTICS ENDPOINTS =====
+
+@app.route('/api/portfolio/analytics/<int:user_id>')
+def api_portfolio_analytics(user_id):
+    """Get comprehensive portfolio analytics with real-time values."""
+    try:
+        portfolio_data = get_real_time_portfolio_value(portfolio, user_id, fetcher)
+        
+        if not portfolio_data:
+            return jsonify({'success': False, 'error': 'Failed to load portfolio'}), 500
+        
+        sector_data = get_sector_allocation(portfolio, user_id, fetcher)
+        
+        return jsonify({
+            'success': True,
+            'portfolio': portfolio_data,
+            'sector_allocation': sector_data
+        })
+    except Exception as e:
+        logger.error(f"Portfolio analytics error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/portfolio/export/<int:user_id>')
+def api_export_portfolio(user_id):
+    """Export portfolio to CSV file."""
+    try:
+        from flask import send_file
+        
+        filepath = export_portfolio_to_csv(portfolio, user_id, fetcher)
+        
+        if not filepath:
+            return jsonify({'success': False, 'error': 'Export failed'}), 500
+        
+        return send_file(filepath, as_attachment=True, 
+                        download_name=f'portfolio_export_{user_id}.csv',
+                        mimetype='text/csv')
+    except Exception as e:
+        logger.error(f"Portfolio export error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 
 @app.route('/api/preferences', methods=['GET', 'POST'])
