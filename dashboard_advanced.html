@@ -973,7 +973,7 @@
     </div>
 
     <script>
-        const API = 'http://localhost:5000/api';
+        const API = window.location.origin + '/api';
         let currentUser = null;
         let currentStock = null;
         let currentStockData = null;
@@ -989,7 +989,7 @@
         let isConnected = false;
 
         function initSocketIO() {
-            socket = io('http://localhost:5000');
+            socket = io(window.location.origin);
 
             socket.on('connect', () => {
                 isConnected = true;
