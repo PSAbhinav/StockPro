@@ -6,7 +6,7 @@ services:
     startCommand: gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:$PORT wsgi:app
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.6
+        value: 3.12.0
       - key: PORT
         value: 10000
     plan: free # Change to a higher plan if more resources are needed

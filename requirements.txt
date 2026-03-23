@@ -2,7 +2,7 @@
 scikit-learn>=1.3.0
 
 # Technical analysis
-pandas-ta>=0.3.14
+pandas-ta
 
 # Existing real-time dependencies
 Flask>=3.0.0
