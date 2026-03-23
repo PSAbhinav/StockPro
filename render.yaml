@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: stockpro
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:$PORT wsgi:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.6
+      - key: PORT
+        value: 10000
+    plan: free # Change to a higher plan if more resources are needed
