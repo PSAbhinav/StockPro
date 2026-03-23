@@ -16,19 +16,20 @@ import logging
 import warnings
 warnings.filterwarnings('ignore')
 
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.linear_model import LinearRegression
+
 # Check if TensorFlow is available
 try:
     import tensorflow as tf
     from tensorflow import keras
     from keras.models import Sequential
     from keras.layers import LSTM, Dense, Dropout
-    from sklearn.preprocessing import MinMaxScaler
     TENSORFLOW_AVAILABLE = True
 except ImportError:
     TENSORFLOW_AVAILABLE = False
     logging.warning("TensorFlow not available. AI predictions will use fallback method.")
 
-from sklearn.linear_model import LinearRegression
 import yfinance as yf
 
 logging.basicConfig(level=logging.INFO)

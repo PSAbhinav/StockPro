@@ -1,3 +1,24 @@
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import logging
+from datetime import datetime
+from typing import List, Dict, Optional
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class AdvancedStockFetcher:
+    """Advanced stock data fetcher using yfinance."""
+    
+    # Comprehensive Indian stocks database
+    INDIAN_STOCKS = {
+        'RELIANCE.NS': 'Reliance Industries',
+        'TCS.NS': 'Tata Consultancy Services',
+        'HDFCBANK.NS': 'HDFC Bank',
+        'INFY.NS': 'Infosys',
+        'ICICIBANK.NS': 'ICICI Bank',
         'SBIN.NS': 'State Bank of India',
         'BHARTIARTL.NS': 'Bharti Airtel',
         'ITC.NS': 'ITC Ltd',
