@@ -57,6 +57,9 @@ server_start_time = datetime.now()
 update_count = 0
 connected_clients = 0
 UPDATE_INTERVAL = 15
+CATEGORIES_CACHE = {}
+CATEGORIES_LAST_UPDATE = None
+CATEGORIES_TTL = 300  # 5 minutes
 
 
 
@@ -476,44 +479,60 @@ def api_get_transactions(user_id):
 
 @app.route('/api/categories')
 def api_categories():
-    """Get stock categories - FIXED with proper market caps."""
+    """Get stock categories - Optimized with caching and batch fetching."""
+    global CATEGORIES_CACHE, CATEGORIES_LAST_UPDATE
+    
+    # Return from cache if still fresh
+    now = datetime.now()
+    if CATEGORIES_LAST_UPDATE and (now - CATEGORIES_LAST_UPDATE).total_seconds() < CATEGORIES_TTL:
+        logger.debug("Returning categories from cache")
+        return jsonify({
+            'success': True,
+            'categories': CATEGORIES_CACHE,
+            'cached': True
+        })
+
     try:
-        # INDIAN STOCKS FIRST - as requested
+        # Define categories
         categories = {
             'top_gainers': [],
             'top_losers': [],
-            # Indian stocks - prioritized
             'indian_large_cap': ['RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS', 'SBIN.NS', 'BHARTIARTL.NS'],
             'indian_mid_cap': ['TATAMOTORS.NS', 'M&M.NS', 'BAJFINANCE.NS', 'ASIANPAINT.NS', 'EICHERMOT.NS'],
             'indian_small_cap': ['ZOMATO.NS', 'PAYTM.NS', 'NYKAA.NS', 'POLICYBZR.NS'],
-            # US stocks
             'us_large_cap': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA'],
             'us_mid_cap': ['AMD', 'NFLX', 'UBER', 'ADBE', 'CRM'],
             'us_small_cap': ['ROKU', 'PLTR', 'SNAP', 'PINS']
         }
         
-        # Get data for ALL stocks to find gainers/losers
+        # Get data for ALL stocks to find gainers/losers in parallel
         all_stocks = (categories['indian_large_cap'] + categories['indian_mid_cap'] + 
-                     categories['us_large_cap'][:5])  # Limited for performance
-        stocks_data = []
+                     categories['us_large_cap'][:5])
         
-        for ticker in all_stocks:
-            data = fetcher.get_quick_stats(ticker)
-            if data:
-                stocks_data.append(data)
+        # Use optimized multiple stats fetcher
+        stocks_data = fetcher.get_multiple_stats(all_stocks)
         
-        # Sort by change to get gainers/losers
-        stocks_data.sort(key=lambda x: x.get('change_percent', 0), reverse=True)
-        categories['top_gainers'] = [s for s in stocks_data[:6] if s.get('change_percent', 0) > 0]
-        categories['top_losers'] = [s for s in stocks_data[-6:] if s.get('change_percent', 0) < 0]
-        categories['top_losers'].reverse()  # Show worst first
+        if stocks_data:
+            # Sort by change to get gainers/losers
+            stocks_data.sort(key=lambda x: x.get('change_percent', 0), reverse=True)
+            categories['top_gainers'] = [s for s in stocks_data[:6] if s.get('change_percent', 0) > 0]
+            categories['top_losers'] = [s for s in stocks_data[-6:] if s.get('change_percent', 0) < 0]
+            categories['top_losers'].reverse()
+        
+        # Update global cache
+        CATEGORIES_CACHE = categories
+        CATEGORIES_LAST_UPDATE = now
         
         return jsonify({
             'success': True,
-            'categories': categories
+            'categories': categories,
+            'cached': False
         })
     except Exception as e:
         logger.error(f"Categories error: {str(e)}")
+        # Fallback to stale cache if error occurs
+        if CATEGORIES_CACHE:
+            return jsonify({'success': True, 'categories': CATEGORIES_CACHE, 'error': str(e)})
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -568,6 +587,58 @@ def handle_subscribe(data):
         if stock_data:
             emit('stock_update', {'ticker': ticker, 'data': stock_data})
 
+
+def categories_prefetcher():
+    """Background thread to keep categories cache warm."""
+    logger.info("Starting categories prefetcher...")
+    while True:
+        try:
+            logger.info("Prefetching categories...")
+            # This will trigger the calculation and cache update
+            with app.app_context():
+                # We can't call the route directly easily, so we duplicate the logic or refactor
+                # For now, let's just make a request to ourselves or call the logic
+                # Actually, let's refactor the logic into a reusable function
+                update_categories_cache()
+            
+            # Sleep for TTL - 30s to ensure it's always fresh
+            time.sleep(max(30, CATEGORIES_TTL - 30))
+        except Exception as e:
+            logger.error(f"Prefetcher error: {str(e)}")
+            time.sleep(60)
+
+def update_categories_cache():
+    """Function to update the global categories cache."""
+    global CATEGORIES_CACHE, CATEGORIES_LAST_UPDATE
+    try:
+        categories = {
+            'top_gainers': [],
+            'top_losers': [],
+            'indian_large_cap': ['RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS', 'SBIN.NS', 'BHARTIARTL.NS'],
+            'indian_mid_cap': ['TATAMOTORS.NS', 'M&M.NS', 'BAJFINANCE.NS', 'ASIANPAINT.NS', 'EICHERMOT.NS'],
+            'indian_small_cap': ['ZOMATO.NS', 'PAYTM.NS', 'NYKAA.NS', 'POLICYBZR.NS'],
+            'us_large_cap': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA'],
+            'us_mid_cap': ['AMD', 'NFLX', 'UBER', 'ADBE', 'CRM'],
+            'us_small_cap': ['ROKU', 'PLTR', 'SNAP', 'PINS']
+        }
+        all_stocks = (categories['indian_large_cap'] + categories['indian_mid_cap'] + 
+                     categories['us_large_cap'][:5])
+        
+        stocks_data = fetcher.get_multiple_stats(all_stocks)
+        if stocks_data:
+            stocks_data.sort(key=lambda x: x.get('change_percent', 0), reverse=True)
+            categories['top_gainers'] = [s for s in stocks_data[:6] if s.get('change_percent', 0) > 0]
+            categories['top_losers'] = [s for s in stocks_data[-6:] if s.get('change_percent', 0) < 0]
+            categories['top_losers'].reverse()
+            
+        CATEGORIES_CACHE = categories
+        CATEGORIES_LAST_UPDATE = datetime.now()
+        logger.info("Categories cache updated successfully")
+    except Exception as e:
+        logger.error(f"Error updating categories cache: {str(e)}")
+
+# Start prefetcher thread
+threading.Thread(target=categories_prefetcher, daemon=True).start()
 
 def background_updater():
     """Background thread for watchlist updates."""

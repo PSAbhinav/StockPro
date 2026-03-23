@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import logging
 from datetime import datetime
+import threading
 from typing import List, Dict, Optional
 
 # Configure logging
@@ -289,13 +290,25 @@ class AdvancedStockFetcher:
         }
     
     def get_comprehensive_data(self, ticker: str) -> Optional[Dict]:
-        """Get comprehensive market data for a stock using yfinance."""
+        """Get comprehensive market data for a stock using yfinance with caching."""
+        # 1. Check cache first
+        now = datetime.now()
+        if ticker in self.cache:
+            cache_data, cache_time = self.cache[ticker]
+            if (now - cache_time).total_seconds() < self.cache_ttl:
+                logger.debug(f"Cache hit for {ticker}")
+                return cache_data
+
         try:
             logger.info(f"Fetching {ticker} from yfinance...")
             stock = yf.Ticker(ticker)
             info = stock.info
             
             if not info or not info.get('symbol'):
+                # Check for stale cache if fetch fails
+                if ticker in self.cache:
+                    logger.warning(f"Fetch failed for {ticker}, using stale cache")
+                    return self.cache[ticker][0]
                 return None
             
             # Get current price data
@@ -373,11 +386,42 @@ class AdvancedStockFetcher:
                 'source': 'yfinance'
             }
             
+            # Update cache
+            self.cache[ticker] = (data, now)
             return data
             
         except Exception as e:
             logger.error(f"Error fetching data for {ticker}: {str(e)}")
+            # Use stale cache on error
+            if ticker in self.cache:
+                return self.cache[ticker][0]
             return None
+
+    def get_multiple_stats(self, tickers: List[str]) -> List[Dict]:
+        """Get stats for multiple tickers efficiently using threads."""
+        results = []
+        threads = []
+        
+        def worker(ticker):
+            stats = self.get_quick_stats(ticker)
+            if stats:
+                results.append(stats)
+        
+        # We use a small number of threads to avoid overwhelming yfinance/network
+        # But even 4-5 threads will be much faster than sequential
+        max_threads = 5
+        for i in range(0, len(tickers), max_threads):
+            batch = tickers[i:i + max_threads]
+            batch_threads = []
+            for ticker in batch:
+                t = threading.Thread(target=worker, args=(ticker,))
+                t.start()
+                batch_threads.append(t)
+            
+            for t in batch_threads:
+                t.join()
+                
+        return results
     
     def get_historical_data(self, ticker: str, period: str = '1y', interval: str = '1d') -> pd.DataFrame:
         """Get historical OHLCV data."""
