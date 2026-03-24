@@ -1214,11 +1214,18 @@
         }
 
         function updateStockCard(ticker, data) {
-            const card = document.querySelector(`[onclick="selectStock('${ticker}')"]`);
-            if (!card) return;
+            const cards = document.querySelectorAll(`[onclick="selectStock('${ticker}')"]`);
+            if (cards.length === 0) return;
+            
             const changeClass = data.change_percent >= 0 ? 'positive' : 'negative';
             const currency = getCurrency(ticker);
-            card.innerHTML = `<div class="stock-ticker">${ticker}</div><div class="stock-name">${data.name || ticker}</div><div class="stock-price">${currency}${data.current_price?.toFixed(2) || '0.00'}</div><div class="stock-change ${changeClass}">${data.change_percent >= 0 ? '+' : ''}${data.change_percent?.toFixed(2) || '0.00'}%</div>`;
+            
+            cards.forEach(card => {
+                // If the card is in a category grid (homepage)
+                if (card.parentElement.classList.contains('category-grid')) {
+                    card.innerHTML = `<div class="stock-ticker">${ticker}</div><div class="stock-name">${data.name || ticker}</div><div class="stock-price">${currency}${data.current_price?.toFixed(2) || '0.00'}</div><div class="stock-change ${changeClass}">${data.change_percent >= 0 ? '+' : ''}${data.change_percent?.toFixed(2) || '0.00'}%</div>`;
+                }
+            });
         }
 
         function getCurrency(ticker) {

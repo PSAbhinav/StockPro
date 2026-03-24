@@ -639,6 +639,8 @@ def update_categories_cache():
 
 # Start prefetcher thread
 threading.Thread(target=categories_prefetcher, daemon=True).start()
+# Also populate immediately on startup once (synchronously) to ensure first hit is fast
+update_categories_cache()
 
 def background_updater():
     """Background thread for watchlist updates."""
