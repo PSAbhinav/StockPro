@@ -10,9 +10,15 @@ from datetime import datetime
 
 load_dotenv()
 
-import sys
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from ai_predictor import StockPredictor
+# Lazy load predictor to avoid import crashes on Vercel
+_predictor = None
+
+def get_predictor():
+    global _predictor
+    if _predictor is None:
+        from ai_predictor import StockPredictor
+        _predictor = StockPredictor()
+    return _predictor
 import requests
 
 # Fix for yfinance on certain hosting providers
@@ -29,14 +35,16 @@ logging.basicConfig(level=logging.INFO)
 @app.errorhandler(Exception)
 def handle_exception(e):
     """Global error handler to return JSON instead of HTML on error."""
-    app.logger.error(f"Unhandled Exception: {e}")
+    import traceback
+    err_msg = str(e)
+    err_type = type(e).__name__
+    app.logger.error(f"Unhandled Exception: {err_msg}\n{traceback.format_exc()}")
     return jsonify({
         "status": "error",
-        "message": str(e),
-        "type": type(e).__name__
+        "message": err_msg,
+        "type": err_type,
+        "trace": traceback.format_exc() if os.environ.get("DEBUG") else None
     }), 500
-
-predictor = StockPredictor()
 
 # Firebase setup (optional)
 try:
@@ -263,6 +271,7 @@ def predict():
     if not symbol:
         return jsonify({"status": "error", "message": f"Could not find ticker: {raw_ticker}. Try the full symbol."}), 404
     
+    predictor = get_predictor()
     analysis = predictor.get_comprehensive_analysis(symbol)
     if analysis:
         analysis['ticker'] = raw_ticker.upper().replace('.NS', '').replace('.BO', '')
