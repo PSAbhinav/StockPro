@@ -206,6 +206,10 @@ def resolve_ticker(symbol):
     except: pass
     return s, s, "Unknown"
 
+@app.route('/api/python/health')
+def health():
+    return jsonify({"status": "ok", "message": "Python API is live"}), 200
+
 @app.route('/api/python/watchlist')
 def get_watchlist():
     yf = get_yf()
