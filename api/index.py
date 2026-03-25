@@ -1,12 +1,15 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 import os
 import logging
 import math
 from dotenv import load_dotenv
 from datetime import datetime
+import traceback
 
 load_dotenv()
 
-# Global Session for User-Agent
+# --- Lazy Loaders & Config ---
 _session = None
 def get_session():
     global _session
@@ -18,7 +21,6 @@ def get_session():
         })
     return _session
 
-# Lazy loaders for heavy libraries
 def get_yf():
     import yfinance as yf
     return yf
@@ -27,392 +29,258 @@ def get_pd():
     import pandas as pd
     return pd
 
-load_dotenv()
+# --- Inlined AI Predictor ---
+class StockPredictor:
+    def __init__(self):
+        from sklearn.ensemble import RandomForestRegressor
+        self.model = RandomForestRegressor(n_estimators=100, random_state=42)
+        self.used_features = ['Close', 'RSI', 'MACD', 'SMA_20', 'EMA_10', 'SMA_50']
 
+    def _flatten_columns(self, df):
+        import pandas as pd
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
+        return df
+
+    def _calculate_rsi(self, series, period=14):
+        delta = series.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / (loss + 1e-9)
+        return 100 - (100 / (1 + rs))
+
+    def _calculate_macd(self, series):
+        ema12 = series.ewm(span=12).mean()
+        ema26 = series.ewm(span=26).mean()
+        macd = ema12 - ema26
+        signal = macd.ewm(span=9).mean()
+        return macd, signal
+
+    def _calculate_bollinger(self, series, period=20):
+        sma = series.rolling(window=period).mean()
+        std = series.rolling(window=period).std()
+        upper = sma + (std * 2)
+        lower = sma - (std * 2)
+        return upper, sma, lower
+
+    def _get_support_resistance(self, df, window=20):
+        recent = df.tail(window)
+        return float(recent['Low'].min()), float(recent['High'].max())
+
+    def _get_sentiment_score(self, rsi, macd_val, price, sma20):
+        score = 50
+        if rsi < 30: score += 20
+        elif rsi > 70: score -= 20
+        if macd_val > 0: score += 15
+        else: score -= 15
+        if price > sma20: score += 10
+        else: score -= 10
+        return max(0, min(100, score))
+
+    def prepare_data(self, df):
+        df = self._flatten_columns(df.copy())
+        df['RSI'] = self._calculate_rsi(df['Close'])
+        macd, signal = self._calculate_macd(df['Close'])
+        df['MACD'] = macd
+        df['MACD_Signal'] = signal
+        df['SMA_20'] = df['Close'].rolling(window=20).mean()
+        df['EMA_10'] = df['Close'].ewm(span=10).mean()
+        df['SMA_50'] = df['Close'].rolling(window=50).mean()
+        df = df.dropna()
+        features = self.used_features
+        available = [f for f in features if f in df.columns]
+        X = df[available].values
+        y = df['Close'].shift(-1).dropna().values
+        X = X[:len(y)]
+        return X, y, available
+
+    def train(self, ticker):
+        yf = get_yf()
+        try:
+            data = yf.download(ticker, period='5y', interval='1d', progress=False, session=get_session())
+            data = self._flatten_columns(data)
+            if data.empty or len(data) < 50: return False
+            X, y, features = self.prepare_data(data)
+            if len(X) == 0: return False
+            self.model.fit(X, y)
+            self.used_features = features
+            return True
+        except Exception as e:
+            return False
+
+    def get_comprehensive_analysis(self, ticker):
+        yf = get_yf()
+        if not self.train(ticker): return None
+        try:
+            data = yf.download(ticker, period='6mo', interval='1d', progress=False, session=get_session())
+            data = self._flatten_columns(data)
+            if data.empty: return None
+            df = data.copy()
+            df['RSI'] = self._calculate_rsi(df['Close'])
+            macd, macd_sig = self._calculate_macd(df['Close'])
+            df['MACD'] = macd
+            df['MACD_Signal'] = macd_sig
+            df['SMA_20'] = df['Close'].rolling(window=20).mean()
+            df['EMA_10'] = df['Close'].ewm(span=10).mean()
+            df['SMA_50'] = df['Close'].rolling(window=50).mean()
+            bb_u, bb_m, bb_l = self._calculate_bollinger(df['Close'])
+            df['BB_Upper'] = bb_u
+            df['BB_Lower'] = bb_l
+            curr_data = df.dropna().tail(1)
+            if curr_data.empty: return None
+            
+            features = curr_data[self.used_features].values
+            prediction = self.model.predict(features)[0]
+            curr_price = float(curr_data['Close'].values[0])
+            change_pct = ((prediction - curr_price) / curr_price) * 100
+            
+            rsi_val = float(curr_data['RSI'].values[0])
+            macd_val = float(curr_data['MACD'].values[0])
+            sma20 = float(curr_data['SMA_20'].values[0])
+            
+            support, resistance = self._get_support_resistance(df)
+            sentiment = self._get_sentiment_score(rsi_val, macd_val, curr_price, sma20)
+            
+            info = yf.Ticker(ticker, session=get_session()).info
+            return {
+                "ticker": ticker,
+                "current_price": curr_price,
+                "predicted_price": float(prediction),
+                "expected_change": float(change_pct),
+                "recommendation": "BUY" if change_pct > 1.0 else "SELL" if change_pct < -1.0 else "HOLD",
+                "sentiment_score": sentiment,
+                "signals": {
+                    "short_term": "BUY" if rsi_val < 40 else "SELL" if rsi_val > 60 else "HOLD",
+                    "medium_term": "BUY" if curr_price > sma20 else "SELL",
+                    "long_term": "HOLD"
+                },
+                "technical_indicators": {
+                    "rsi": round(rsi_val, 2),
+                    "macd": round(macd_val, 2),
+                    "support": round(support, 2),
+                    "resistance": round(resistance, 2)
+                },
+                "key_stats": {
+                    "market_cap": info.get("marketCap"),
+                    "pe_ratio": info.get("trailingPE"),
+                    "name": info.get("longName") or ticker
+                },
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            return None
+
+# --- Flask App ---
+app = Flask(__name__)
+CORS(app)
+
+_predictor = None
 def get_predictor():
     global _predictor
     if _predictor is None:
-        import sys
-        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-        from ai_predictor import StockPredictor
         _predictor = StockPredictor()
     return _predictor
-# Flask setup must remain at top level for Vercel
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-app = Flask(__name__)
-CORS(app)
-logging.basicConfig(level=logging.INFO)
 
 @app.errorhandler(Exception)
 def handle_exception(e):
-    """Global error handler to return JSON instead of HTML on error."""
-    import traceback
-    err_msg = str(e)
-    err_type = type(e).__name__
-    app.logger.error(f"Unhandled Exception: {err_msg}\n{traceback.format_exc()}")
-    return jsonify({
-        "status": "error",
-        "message": err_msg,
-        "type": err_type,
-        "trace": traceback.format_exc() if os.environ.get("DEBUG") else None
-    }), 500
-
-# Firebase setup (optional)
-try:
-    import firebase_admin
-    from firebase_admin import credentials, db as firebase_db
-    cred_path = os.path.join(os.path.dirname(__file__), 'service-account.json')
-    if os.path.exists(cred_path) and not firebase_admin._apps:
-        cred = credentials.Certificate(cred_path)
-        firebase_admin.initialize_app(cred, {
-            "databaseURL": os.environ.get("FIREBASE_DB_URL", "https://stockpro-4d381-default-rtdb.firebaseio.com/")
-        })
-except Exception as e:
-    app.logger.warning(f"Firebase not initialized: {e}")
+    app.logger.error(f"Error: {str(e)}\n{traceback.format_exc()}")
+    return jsonify({"status": "error", "message": str(e), "type": type(e).__name__}), 500
 
 def _flatten_cols(df):
-    if isinstance(df.columns, pd.MultiIndex):
+    if isinstance(df.columns, (list, tuple)) or hasattr(df.columns, 'levels'):
         df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
     return df
 
-def safe_float(val, default=0.0):
-    """Convert a value to float, returning default if NaN/Inf."""
+def resolve_ticker(symbol):
+    if not symbol: return None, None, None
+    s = symbol.upper()
+    if s.endswith(('.NS', '.BO')): return s, s, "NSE/BSE"
+    yf = get_yf()
     try:
-        f = float(val)
-        if math.isnan(f) or math.isinf(f):
-            return default
-        return f
-    except (TypeError, ValueError):
-        return default
-
-# ── Popular ticker database for name-based search ──
-TICKER_DB = {
-    # Indian Stocks (NSE)
-    "RELIANCE": {"symbol": "RELIANCE.NS", "name": "Reliance Industries", "exchange": "NSE"},
-    "TCS": {"symbol": "TCS.NS", "name": "Tata Consultancy Services", "exchange": "NSE"},
-    "HDFCBANK": {"symbol": "HDFCBANK.NS", "name": "HDFC Bank Ltd.", "exchange": "NSE"},
-    "INFY": {"symbol": "INFY.NS", "name": "Infosys Ltd.", "exchange": "NSE"},
-    "ICICIBANK": {"symbol": "ICICIBANK.NS", "name": "ICICI Bank Ltd.", "exchange": "NSE"},
-    "SBIN": {"symbol": "SBIN.NS", "name": "State Bank of India", "exchange": "NSE"},
-    "HINDUNILVR": {"symbol": "HINDUNILVR.NS", "name": "Hindustan Unilever", "exchange": "NSE"},
-    "ITC": {"symbol": "ITC.NS", "name": "ITC Ltd.", "exchange": "NSE"},
-    "BHARTIARTL": {"symbol": "BHARTIARTL.NS", "name": "Bharti Airtel", "exchange": "NSE"},
-    "KOTAKBANK": {"symbol": "KOTAKBANK.NS", "name": "Kotak Mahindra Bank", "exchange": "NSE"},
-    "LT": {"symbol": "LT.NS", "name": "Larsen & Toubro", "exchange": "NSE"},
-    "WIPRO": {"symbol": "WIPRO.NS", "name": "Wipro Ltd.", "exchange": "NSE"},
-    "HCLTECH": {"symbol": "HCLTECH.NS", "name": "HCL Technologies", "exchange": "NSE"},
-    "MARUTI": {"symbol": "MARUTI.NS", "name": "Maruti Suzuki India", "exchange": "NSE"},
-    "TATAMOTORS": {"symbol": "TATAMOTORS.NS", "name": "Tata Motors", "exchange": "NSE"},
-    "TATASTEEL": {"symbol": "TATASTEEL.NS", "name": "Tata Steel", "exchange": "NSE"},
-    "ADANIENT": {"symbol": "ADANIENT.NS", "name": "Adani Enterprises", "exchange": "NSE"},
-    "BAJFINANCE": {"symbol": "BAJFINANCE.NS", "name": "Bajaj Finance", "exchange": "NSE"},
-    "SUNPHARMA": {"symbol": "SUNPHARMA.NS", "name": "Sun Pharmaceutical", "exchange": "NSE"},
-    "TITAN": {"symbol": "TITAN.NS", "name": "Titan Company", "exchange": "NSE"},
-    "AXISBANK": {"symbol": "AXISBANK.NS", "name": "Axis Bank", "exchange": "NSE"},
-    "ASIANPAINT": {"symbol": "ASIANPAINT.NS", "name": "Asian Paints", "exchange": "NSE"},
-    "ULTRACEMCO": {"symbol": "ULTRACEMCO.NS", "name": "UltraTech Cement", "exchange": "NSE"},
-    "POWERGRID": {"symbol": "POWERGRID.NS", "name": "Power Grid Corp", "exchange": "NSE"},
-    "NTPC": {"symbol": "NTPC.NS", "name": "NTPC Ltd.", "exchange": "NSE"},
-    "ONGC": {"symbol": "ONGC.NS", "name": "Oil & Natural Gas Corp", "exchange": "NSE"},
-    "COALINDIA": {"symbol": "COALINDIA.NS", "name": "Coal India", "exchange": "NSE"},
-    # Global Stocks (US)
-    "GOOGLE": {"symbol": "GOOGL", "name": "Alphabet Inc. (Google)", "exchange": "NASDAQ"},
-    "GOOGL": {"symbol": "GOOGL", "name": "Alphabet Inc. (Google)", "exchange": "NASDAQ"},
-    "APPLE": {"symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ"},
-    "AAPL": {"symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ"},
-    "MICROSOFT": {"symbol": "MSFT", "name": "Microsoft Corp.", "exchange": "NASDAQ"},
-    "MSFT": {"symbol": "MSFT", "name": "Microsoft Corp.", "exchange": "NASDAQ"},
-    "AMAZON": {"symbol": "AMZN", "name": "Amazon.com Inc.", "exchange": "NASDAQ"},
-    "AMZN": {"symbol": "AMZN", "name": "Amazon.com Inc.", "exchange": "NASDAQ"},
-    "META": {"symbol": "META", "name": "Meta Platforms Inc.", "exchange": "NASDAQ"},
-    "FACEBOOK": {"symbol": "META", "name": "Meta Platforms Inc.", "exchange": "NASDAQ"},
-    "TESLA": {"symbol": "TSLA", "name": "Tesla Inc.", "exchange": "NASDAQ"},
-    "TSLA": {"symbol": "TSLA", "name": "Tesla Inc.", "exchange": "NASDAQ"},
-    "NVIDIA": {"symbol": "NVDA", "name": "NVIDIA Corp.", "exchange": "NASDAQ"},
-    "NVDA": {"symbol": "NVDA", "name": "NVIDIA Corp.", "exchange": "NASDAQ"},
-    "NETFLIX": {"symbol": "NFLX", "name": "Netflix Inc.", "exchange": "NASDAQ"},
-    "NFLX": {"symbol": "NFLX", "name": "Netflix Inc.", "exchange": "NASDAQ"},
-    "AMD": {"symbol": "AMD", "name": "Advanced Micro Devices", "exchange": "NASDAQ"},
-    "INTEL": {"symbol": "INTC", "name": "Intel Corp.", "exchange": "NASDAQ"},
-    "INTC": {"symbol": "INTC", "name": "Intel Corp.", "exchange": "NASDAQ"},
-    "DISNEY": {"symbol": "DIS", "name": "Walt Disney Co.", "exchange": "NYSE"},
-    "DIS": {"symbol": "DIS", "name": "Walt Disney Co.", "exchange": "NYSE"},
-    "JPMORGAN": {"symbol": "JPM", "name": "JPMorgan Chase", "exchange": "NYSE"},
-    "JPM": {"symbol": "JPM", "name": "JPMorgan Chase", "exchange": "NYSE"},
-    "VISA": {"symbol": "V", "name": "Visa Inc.", "exchange": "NYSE"},
-    "MASTERCARD": {"symbol": "MA", "name": "Mastercard Inc.", "exchange": "NYSE"},
-}
-
-def resolve_ticker(raw_ticker):
-    """Resolve a user input to a valid yfinance ticker symbol."""
-    key = raw_ticker.upper().strip()
-    if key in TICKER_DB:
-        return TICKER_DB[key]["symbol"], TICKER_DB[key]["name"], TICKER_DB[key]["exchange"]
-    # Try direct yfinance lookup
-    if '.' in key:
-        return key, key, "Unknown"
-    # Try as NSE ticker first
+        t = yf.Ticker(s, session=get_session())
+        if t.info and 'symbol' in t.info: return t.info['symbol'], t.info.get('shortName', s), "US"
+    except: pass
     try:
-        t = yf.Ticker(key + ".NS")
-        info = t.info
-        if info and info.get("regularMarketPrice"):
-            name = info.get("longName") or info.get("shortName") or key
-            return key + ".NS", name, "NSE"
-    except:
-        pass
-    # Try as US ticker
-    try:
-        t = yf.Ticker(key)
-        info = t.info
-        if info and info.get("regularMarketPrice"):
-            name = info.get("longName") or info.get("shortName") or key
-            return key, name, info.get("exchange", "US")
-    except:
-        pass
-    return None, None, None
+        t_ns = yf.Ticker(s + ".NS", session=get_session())
+        if t_ns.info and 'symbol' in t_ns.info: return s + ".NS", t_ns.info.get('shortName', s), "NSE"
+    except: pass
+    return s, s, "Unknown"
 
-def get_currency(symbol):
-    if '.NS' in symbol or '.BO' in symbol:
-        return 'INR'
-    return 'USD'
-
-
-@app.route('/api/python/search-ticker')
-def search_ticker():
-    """Fuzzy search for tickers by name or symbol."""
-    q = request.args.get('q', '').upper().strip()
-    if not q or len(q) < 1:
-        return jsonify({"results": []})
+@app.route('/api/python/watchlist')
+def get_watchlist():
+    yf = get_yf()
+    indian = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS"]
+    glob = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA"]
     
-    results = []
-    for key, val in TICKER_DB.items():
-        if q in key or q in val["name"].upper():
-            entry = {"ticker": key, "symbol": val["symbol"], "name": val["name"], "exchange": val["exchange"]}
-            if entry not in results:
-                results.append(entry)
-    
-    # Deduplicate by symbol
-    seen = set()
-    unique = []
-    for r in results:
-        if r["symbol"] not in seen:
-            seen.add(r["symbol"])
-            unique.append(r)
+    def fetch_group(tickers):
+        data = yf.download(tickers, period='5d', interval='1d', progress=False, group_by='ticker', session=get_session())
+        res = []
+        for t in tickers:
+            try:
+                hist = data[t] if len(tickers) > 1 else data
+                hist = _flatten_cols(hist).dropna()
+                if hist.empty: continue
+                last = hist.tail(2)
+                if len(last) < 2: continue
+                prev, curr = last['Close'].values[-2], last['Close'].values[-1]
+                change = curr - prev
+                pct = (change / prev) * 100
+                res.append({"symbol": t.replace(".NS", ""), "price": round(curr, 2), "change": round(change, 2), "change_percent": round(pct, 2)})
+            except: continue
+        return res
 
-    return jsonify({"results": unique[:10]})
+    return jsonify({"status": "success", "indian": fetch_group(indian), "global": fetch_group(glob)})
 
-
-@app.route('/api/python/history')
-def history():
-    """OHLCV historical data for charts."""
-    raw_ticker = request.args.get('ticker', 'RELIANCE')
-    period = request.args.get('period', '6mo')
+@app.route('/api/python/stock-data')
+def get_stock_data():
+    ticker = request.args.get('ticker', 'AAPL')
+    period = request.args.get('period', '1mo')
     interval = request.args.get('interval', '1d')
-    
-    symbol, name, exchange = resolve_ticker(raw_ticker)
-    if not symbol:
-        return jsonify({"status": "error", "message": f"Could not find ticker: {raw_ticker}"}), 404
-    
-    # Validate period/interval combinations
-    valid_periods = ['1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'max']
-    valid_intervals = ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo']
-    
-    if period not in valid_periods:
-        period = '6mo'
-    if interval not in valid_intervals:
-        interval = '1d'
-    
-    # yfinance restrictions: intraday data limited to last 60 days
-    if interval in ['1m', '2m', '5m', '15m', '30m'] and period not in ['1d', '5d']:
-        period = '5d'
-    if interval in ['60m', '90m', '1h'] and period not in ['1d', '5d', '1mo']:
-        period = '1mo'
-    
-        yf = get_yf()
-        pd = get_pd()
-        session = get_session()
-        data = yf.download(symbol, period=period, interval=interval, progress=False, session=session)
-        data = _flatten_cols(data)
-        if data.empty:
-            return jsonify({"status": "error", "message": "No data available"}), 404
-        
-        records = []
-        for idx, row in data.iterrows():
-            ts = idx
-            if hasattr(ts, 'timestamp'):
-                time_val = int(ts.timestamp())
-                # Add IST offset (5.5 hours) for Indian stocks to show local market time
-                if symbol.endswith('.NS') or symbol.endswith('.BO'):
-                    time_val += 19800
-            else:
-                time_val = str(ts)
-            
-            close_val = safe_float(row['Close'])
-            if close_val == 0:
-                continue  # skip rows with no data
-            record = {
-                "time": time_val,
-                "open": round(safe_float(row['Open']), 2),
-                "high": round(safe_float(row['High']), 2),
-                "low": round(safe_float(row['Low']), 2),
-                "close": round(close_val, 2),
-            }
-            if 'Volume' in row:
-                record["volume"] = int(safe_float(row['Volume']))
-            records.append(record)
-        
-        return jsonify({
-            "status": "success",
-            "ticker": raw_ticker.upper(),
-            "symbol": symbol,
-            "name": name,
-            "exchange": exchange,
-            "currency": get_currency(symbol),
-            "data": records,
-            "period": period,
-            "interval": interval,
-        })
+    symbol, _, _ = resolve_ticker(ticker)
+    yf = get_yf()
+    try:
+        df = yf.download(symbol, period=period, interval=interval, progress=False, session=get_session())
+        df = _flatten_cols(df).dropna()
+        chart_data = []
+        for idx, row in df.iterrows():
+            chart_data.append({
+                "time": int(idx.timestamp()),
+                "open": float(row['Open']), "high": float(row['High']),
+                "low": float(row['Low']), "close": float(row['Close']),
+                "volume": float(row['Volume'])
+            })
+        return jsonify({"status": "success", "symbol": symbol, "data": chart_data})
     except Exception as e:
-        app.logger.error(f"History error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 @app.route('/api/python/predict')
 def predict():
-    raw_ticker = request.args.get('ticker', 'RELIANCE')
-    symbol, name, exchange = resolve_ticker(raw_ticker)
-    if not symbol:
-        return jsonify({"status": "error", "message": f"Could not find ticker: {raw_ticker}. Try the full symbol."}), 404
-    
-    predictor = get_predictor()
-    analysis = predictor.get_comprehensive_analysis(symbol)
-    if analysis:
-        analysis['ticker'] = raw_ticker.upper().replace('.NS', '').replace('.BO', '')
-        analysis['display_name'] = name
-        analysis['exchange'] = exchange
-        analysis['currency'] = get_currency(symbol)
-        analysis['symbol'] = symbol
-        return jsonify({"status": "success", "analysis": analysis})
-    
-    return jsonify({"status": "error", "message": f"Could not analyze {raw_ticker}. Check ticker symbol."}), 500
-
+    ticker = request.args.get('ticker', 'AAPL')
+    symbol, _, _ = resolve_ticker(ticker)
+    analysis = get_predictor().get_comprehensive_analysis(symbol)
+    if analysis: return jsonify({"status": "success", "data": analysis})
+    return jsonify({"status": "error", "message": "Analysis failed"}), 500
 
 @app.route('/api/python/news')
-def news():
-    """Fetch news for a stock ticker."""
-    raw_ticker = request.args.get('ticker', 'RELIANCE')
-    symbol, name, exchange = resolve_ticker(raw_ticker)
-    if not symbol:
-        return jsonify({"status": "error", "message": f"Unknown ticker: {raw_ticker}"}), 404
-    
+def get_news():
+    ticker = request.args.get('ticker', 'AAPL')
+    symbol, _, _ = resolve_ticker(ticker)
+    yf = get_yf()
     try:
-        ticker_obj = yf.Ticker(symbol)
-        raw_news = ticker_obj.news if hasattr(ticker_obj, 'news') else []
-        
-        articles = []
-        items = raw_news if isinstance(raw_news, list) else []
-        for item in items[:15]:
-            # Handle different yfinance news formats
-            if isinstance(item, dict):
-                article = {
-                    "title": item.get("title") or item.get("content", {}).get("title", ""),
-                    "publisher": item.get("publisher") or item.get("content", {}).get("provider", {}).get("displayName", ""),
-                    "link": item.get("link") or item.get("content", {}).get("canonicalUrl", {}).get("url", ""),
-                    "published": item.get("providerPublishTime") or item.get("content", {}).get("pubDate", ""),
-                    "thumbnail": "",
-                }
-                # Try to extract thumbnail
-                if "thumbnail" in item and item["thumbnail"]:
-                    resolutions = item["thumbnail"].get("resolutions", [])
-                    if resolutions:
-                        article["thumbnail"] = resolutions[-1].get("url", "")
-                elif "content" in item:
-                    thumb = item.get("content", {}).get("thumbnail", {})
-                    if thumb and "resolutions" in thumb:
-                        resolutions = thumb["resolutions"]
-                        if resolutions:
-                            article["thumbnail"] = resolutions[-1].get("url", "")
-                
-                if article["title"]:
-                    articles.append(article)
-        
-        return jsonify({
-            "status": "success",
-            "ticker": raw_ticker.upper(),
-            "name": name,
-            "articles": articles
-        })
-    except Exception as e:
-        app.logger.error(f"News error: {e}")
-        return jsonify({"status": "success", "ticker": raw_ticker.upper(), "articles": []})
+        t = yf.Ticker(symbol, session=get_session())
+        news = []
+        for item in t.news[:5]:
+            news.append({"title": item['title'], "publisher": item['publisher'], "link": item['link'], "type": item['type']})
+        return jsonify({"status": "success", "news": news})
+    except:
+        return jsonify({"status": "success", "news": []})
 
+@app.route('/api/python/search-ticker')
+def search():
+    query = request.args.get('query', '').upper()
+    if not query: return jsonify([])
+    symbol, name, _ = resolve_ticker(query)
+    return jsonify([{"symbol": symbol.replace(".NS", ""), "name": name, "full_symbol": symbol}])
 
-@app.route('/api/python/watchlist')
-def watchlist():
-    """Live prices for watchlist stocks."""
-    indian = ['RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS', 'SBIN.NS',
-              'BHARTIARTL.NS', 'ITC.NS', 'KOTAKBANK.NS', 'LT.NS', 'WIPRO.NS', 'TATAMOTORS.NS']
-    global_stocks = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'NVDA']
-    
-    names = {
-        'RELIANCE.NS': 'Reliance Industries', 'TCS.NS': 'Tata Consultancy Services',
-        'HDFCBANK.NS': 'HDFC Bank Ltd.', 'INFY.NS': 'Infosys Ltd.',
-        'ICICIBANK.NS': 'ICICI Bank Ltd.', 'SBIN.NS': 'State Bank of India',
-        'BHARTIARTL.NS': 'Bharti Airtel', 'ITC.NS': 'ITC Ltd.',
-        'KOTAKBANK.NS': 'Kotak Mahindra Bank', 'LT.NS': 'Larsen & Toubro',
-        'WIPRO.NS': 'Wipro Ltd.', 'TATAMOTORS.NS': 'Tata Motors',
-        'AAPL': 'Apple Inc.', 'GOOGL': 'Alphabet (Google)',
-        'MSFT': 'Microsoft Corp.', 'AMZN': 'Amazon.com Inc.',
-        'TSLA': 'Tesla Inc.', 'NVDA': 'NVIDIA Corp.',
-    }
-    
-    def fetch_group(tickers, currency):
-        results = []
-        yf = get_yf()
-        pd = get_pd()
-        session = get_session()
-        data = yf.download(tickers, period='5d', interval='1d', progress=False, group_by='ticker', session=session)
-            for t in tickers:
-                try:
-                    if len(tickers) > 1:
-                        stock_data = data[t] if t in data.columns.get_level_values(0) else None
-                    else:
-                        stock_data = data
-                    if stock_data is None or stock_data.empty:
-                        continue
-                    last = stock_data.tail(1)
-                    prev = stock_data.tail(2).head(1)
-                    cp = safe_float(last['Close'].values[0])
-                    if cp == 0:
-                        continue
-                    pp = safe_float(prev['Close'].values[0]) if len(prev) > 0 else cp
-                    if pp == 0:
-                        pp = cp
-                    ch = safe_float(((cp - pp) / pp) * 100)
-                    results.append({
-                        "ticker": t.replace('.NS', '').replace('.BO', ''),
-                        "name": names.get(t, t),
-                        "price": round(cp, 2),
-                        "change": round(ch, 2),
-                        "currency": currency,
-                        "exchange": "NSE" if '.NS' in t else "US",
-                    })
-                except:
-                    continue
-        except:
-            pass
-        return results
-    
-    indian_data = fetch_group(indian, "INR")
-    global_data = fetch_group(global_stocks, "USD")
-    
-    return jsonify({
-        "status": "success",
-        "indian": indian_data,
-        "global": global_data,
-    })
-
-
-if __name__ == "__main__":
-    app.run(port=8000, host='0.0.0.0', debug=True)
+if __name__ == '__main__':
+    app.run(port=8000)
