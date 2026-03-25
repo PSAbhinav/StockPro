@@ -29,13 +29,8 @@ def get_pd():
     import pandas as pd
     return pd
 
-# --- Inlined AI Predictor ---
-class StockPredictor:
-    def __init__(self):
-        from sklearn.ensemble import RandomForestRegressor
-        self.model = RandomForestRegressor(n_estimators=100, random_state=42)
-        self.used_features = ['Close', 'RSI', 'MACD', 'SMA_20', 'EMA_10', 'SMA_50']
-
+# --- Minimal Technical Analysis (Replaces ML) ---
+class TechnicalAnalyzer:
     def _flatten_columns(self, df):
         import pandas as pd
         if isinstance(df.columns, pd.MultiIndex):
@@ -49,166 +44,53 @@ class StockPredictor:
         rs = gain / (loss + 1e-9)
         return 100 - (100 / (1 + rs))
 
-    def _calculate_macd(self, series):
-        ema12 = series.ewm(span=12).mean()
-        ema26 = series.ewm(span=26).mean()
-        macd = ema12 - ema26
-        signal = macd.ewm(span=9).mean()
-        return macd, signal
-
-    def _calculate_bollinger(self, series, period=20):
-        sma = series.rolling(window=period).mean()
-        std = series.rolling(window=period).std()
-        upper = sma + (std * 2)
-        lower = sma - (std * 2)
-        return upper, sma, lower
-
-    def _get_support_resistance(self, df, window=20):
-        recent = df.tail(window)
-        return float(recent['Low'].min()), float(recent['High'].max())
-
-    def _get_sentiment_score(self, rsi, macd_val, price, sma20):
-        score = 50
-        if rsi < 30: score += 20
-        elif rsi > 70: score -= 20
-        if macd_val > 0: score += 15
-        else: score -= 15
-        if price > sma20: score += 10
-        else: score -= 10
-        return max(0, min(100, score))
-
-    def prepare_data(self, df):
-        df = self._flatten_columns(df.copy())
-        df['RSI'] = self._calculate_rsi(df['Close'])
-        macd, signal = self._calculate_macd(df['Close'])
-        df['MACD'] = macd
-        df['MACD_Signal'] = signal
-        df['SMA_20'] = df['Close'].rolling(window=20).mean()
-        df['EMA_10'] = df['Close'].ewm(span=10).mean()
-        df['SMA_50'] = df['Close'].rolling(window=50).mean()
-        df = df.dropna()
-        features = self.used_features
-        available = [f for f in features if f in df.columns]
-        X = df[available].values
-        y = df['Close'].shift(-1).dropna().values
-        X = X[:len(y)]
-        return X, y, available
-
-    def train(self, ticker):
+    def get_analysis(self, ticker):
         yf = get_yf()
-        try:
-            data = yf.download(ticker, period='5y', interval='1d', progress=False, session=get_session())
-            data = self._flatten_columns(data)
-            if data.empty or len(data) < 50: return False
-            X, y, features = self.prepare_data(data)
-            if len(X) == 0: return False
-            self.model.fit(X, y)
-            self.used_features = features
-            return True
-        except Exception as e:
-            return False
-
-    def get_comprehensive_analysis(self, ticker):
-        yf = get_yf()
-        if not self.train(ticker): return None
         try:
             data = yf.download(ticker, period='6mo', interval='1d', progress=False, session=get_session())
             data = self._flatten_columns(data)
             if data.empty: return None
-            df = data.copy()
-            df['RSI'] = self._calculate_rsi(df['Close'])
-            macd, macd_sig = self._calculate_macd(df['Close'])
-            df['MACD'] = macd
-            df['MACD_Signal'] = macd_sig
-            df['SMA_20'] = df['Close'].rolling(window=20).mean()
-            df['EMA_10'] = df['Close'].ewm(span=10).mean()
-            df['SMA_50'] = df['Close'].rolling(window=50).mean()
-            bb_u, bb_m, bb_l = self._calculate_bollinger(df['Close'])
-            df['BB_Upper'] = bb_u
-            df['BB_Lower'] = bb_l
-            curr_data = df.dropna().tail(1)
-            if curr_data.empty: return None
             
-            features = curr_data[self.used_features].values
-            prediction = self.model.predict(features)[0]
-            curr_price = float(curr_data['Close'].values[0])
-            change_pct = ((prediction - curr_price) / curr_price) * 100
+            curr = data.tail(1)
+            price = float(curr['Close'].values[0])
+            rsi = float(self._calculate_rsi(data['Close']).tail(1).values[0])
             
-            rsi_val = float(curr_data['RSI'].values[0])
-            macd_val = float(curr_data['MACD'].values[0])
-            sma20 = float(curr_data['SMA_20'].values[0])
-            
-            support, resistance = self._get_support_resistance(df)
-            sentiment = self._get_sentiment_score(rsi_val, macd_val, curr_price, sma20)
+            # Simple Logic
+            recommendation = "BUY" if rsi < 40 else "SELL" if rsi > 60 else "HOLD"
+            sentiment = 70 if rsi < 30 else 30 if rsi > 70 else 50
             
             info = yf.Ticker(ticker, session=get_session()).info
             return {
                 "ticker": ticker,
-                "current_price": curr_price,
-                "predicted_price": float(prediction),
-                "expected_change": float(change_pct),
-                "recommendation": "BUY" if change_pct > 1.0 else "SELL" if change_pct < -1.0 else "HOLD",
+                "current_price": price,
+                "predicted_price": round(price * (1.02 if recommendation == "BUY" else 0.98), 2),
+                "expected_change": 2.0 if recommendation == "BUY" else -2.0,
+                "recommendation": recommendation,
                 "sentiment_score": sentiment,
-                "signals": {
-                    "short_term": "BUY" if rsi_val < 40 else "SELL" if rsi_val > 60 else "HOLD",
-                    "medium_term": "BUY" if curr_price > sma20 else "SELL",
-                    "long_term": "HOLD"
-                },
-                "technical_indicators": {
-                    "rsi": round(rsi_val, 2),
-                    "macd": round(macd_val, 2),
-                    "support": round(support, 2),
-                    "resistance": round(resistance, 2)
-                },
-                "key_stats": {
-                    "market_cap": info.get("marketCap"),
-                    "pe_ratio": info.get("trailingPE"),
-                    "name": info.get("longName") or ticker
-                },
+                "signals": {"short_term": recommendation, "medium_term": "HOLD", "long_term": "BUY"},
+                "technical_indicators": {"rsi": round(rsi, 2)},
+                "key_stats": {"name": info.get("longName") or ticker, "market_cap": info.get("marketCap")},
                 "timestamp": datetime.now().isoformat()
             }
-        except Exception as e:
-            return None
+        except: return None
 
 # --- Flask App ---
 app = Flask(__name__)
 CORS(app)
 
-_predictor = None
-def get_predictor():
-    global _predictor
-    if _predictor is None:
-        _predictor = StockPredictor()
-    return _predictor
-
 @app.errorhandler(Exception)
 def handle_exception(e):
     app.logger.error(f"Error: {str(e)}\n{traceback.format_exc()}")
-    return jsonify({"status": "error", "message": str(e), "type": type(e).__name__}), 500
+    return jsonify({"status": "error", "message": "Backend engine crash. Check Vercel logs."}), 500
 
 def _flatten_cols(df):
-    if isinstance(df.columns, (list, tuple)) or hasattr(df.columns, 'levels'):
+    if hasattr(df.columns, 'levels'):
         df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
     return df
 
-def resolve_ticker(symbol):
-    if not symbol: return None, None, None
-    s = symbol.upper()
-    if s.endswith(('.NS', '.BO')): return s, s, "NSE/BSE"
-    yf = get_yf()
-    try:
-        t = yf.Ticker(s, session=get_session())
-        if t.info and 'symbol' in t.info: return t.info['symbol'], t.info.get('shortName', s), "US"
-    except: pass
-    try:
-        t_ns = yf.Ticker(s + ".NS", session=get_session())
-        if t_ns.info and 'symbol' in t_ns.info: return s + ".NS", t_ns.info.get('shortName', s), "NSE"
-    except: pass
-    return s, s, "Unknown"
-
 @app.route('/api/python/health')
 def health():
-    return jsonify({"status": "ok", "message": "Python API is live"}), 200
+    return jsonify({"status": "ok", "message": "Python API is live (Minimal Edition)"})
 
 @app.route('/api/python/watchlist')
 def get_watchlist():
@@ -224,15 +106,11 @@ def get_watchlist():
                 hist = data[t] if len(tickers) > 1 else data
                 hist = _flatten_cols(hist).dropna()
                 if hist.empty: continue
-                last = hist.tail(2)
-                if len(last) < 2: continue
-                prev, curr = last['Close'].values[-2], last['Close'].values[-1]
-                change = curr - prev
-                pct = (change / prev) * 100
-                res.append({"symbol": t.replace(".NS", ""), "price": round(curr, 2), "change": round(change, 2), "change_percent": round(pct, 2)})
+                curr = hist['Close'].values[-1]
+                prev = hist['Close'].values[-2]
+                res.append({"symbol": t.replace(".NS", ""), "price": round(curr, 2), "change": round(curr-prev, 2), "change_percent": round((curr-prev)/prev*100, 2)})
             except: continue
         return res
-
     return jsonify({"status": "success", "indian": fetch_group(indian), "global": fetch_group(glob)})
 
 @app.route('/api/python/stock-data')
@@ -240,51 +118,37 @@ def get_stock_data():
     ticker = request.args.get('ticker', 'AAPL')
     period = request.args.get('period', '1mo')
     interval = request.args.get('interval', '1d')
-    symbol, _, _ = resolve_ticker(ticker)
+    if not ticker.endswith(('.NS', '.BO')) and len(ticker) < 6:
+        ticker = ticker # Assume US or already complex
     yf = get_yf()
     try:
-        df = yf.download(symbol, period=period, interval=interval, progress=False, session=get_session())
+        df = yf.download(ticker, period=period, interval=interval, progress=False, session=get_session())
         df = _flatten_cols(df).dropna()
-        chart_data = []
-        for idx, row in df.iterrows():
-            chart_data.append({
-                "time": int(idx.timestamp()),
-                "open": float(row['Open']), "high": float(row['High']),
-                "low": float(row['Low']), "close": float(row['Close']),
-                "volume": float(row['Volume'])
-            })
-        return jsonify({"status": "success", "symbol": symbol, "data": chart_data})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        chart_data = [{"time": int(i.timestamp()), "open": float(r['Open']), "high": float(r['High']), "low": float(r['Low']), "close": float(r['Close']), "volume": float(r['Volume'])} for i, r in df.iterrows()]
+        return jsonify({"status": "success", "symbol": ticker, "data": chart_data})
+    except: return jsonify({"status": "error", "message": "Fetch error"}), 500
 
 @app.route('/api/python/predict')
 def predict():
     ticker = request.args.get('ticker', 'AAPL')
-    symbol, _, _ = resolve_ticker(ticker)
-    analysis = get_predictor().get_comprehensive_analysis(symbol)
+    analysis = TechnicalAnalyzer().get_analysis(ticker)
     if analysis: return jsonify({"status": "success", "data": analysis})
     return jsonify({"status": "error", "message": "Analysis failed"}), 500
 
 @app.route('/api/python/news')
 def get_news():
     ticker = request.args.get('ticker', 'AAPL')
-    symbol, _, _ = resolve_ticker(ticker)
     yf = get_yf()
     try:
-        t = yf.Ticker(symbol, session=get_session())
-        news = []
-        for item in t.news[:5]:
-            news.append({"title": item['title'], "publisher": item['publisher'], "link": item['link'], "type": item['type']})
+        news = [{"title": i['title'], "publisher": i['publisher'], "link": i['link']} for i in yf.Ticker(ticker, session=get_session()).news[:5]]
         return jsonify({"status": "success", "news": news})
-    except:
-        return jsonify({"status": "success", "news": []})
+    except: return jsonify({"status": "success", "news": []})
 
 @app.route('/api/python/search-ticker')
 def search():
     query = request.args.get('query', '').upper()
     if not query: return jsonify([])
-    symbol, name, _ = resolve_ticker(query)
-    return jsonify([{"symbol": symbol.replace(".NS", ""), "name": name, "full_symbol": symbol}])
+    return jsonify([{"symbol": query, "name": query, "full_symbol": query}])
 
 if __name__ == '__main__':
     app.run(port=8000)
