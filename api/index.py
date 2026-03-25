@@ -13,10 +13,28 @@ load_dotenv()
 import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from ai_predictor import StockPredictor
+import requests
+
+# Fix for yfinance on certain hosting providers
+# Set a default user-agent for all requests
+session = requests.Session()
+session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+})
 
 app = Flask(__name__)
 CORS(app)
 logging.basicConfig(level=logging.INFO)
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Global error handler to return JSON instead of HTML on error."""
+    app.logger.error(f"Unhandled Exception: {e}")
+    return jsonify({
+        "status": "error",
+        "message": str(e),
+        "type": type(e).__name__
+    }), 500
 
 predictor = StockPredictor()
 
@@ -192,7 +210,7 @@ def history():
         period = '1mo'
     
     try:
-        data = yf.download(symbol, period=period, interval=interval, progress=False)
+        data = yf.download(symbol, period=period, interval=interval, progress=False, session=session)
         data = _flatten_cols(data)
         if data.empty:
             return jsonify({"status": "error", "message": "No data available"}), 404
@@ -329,7 +347,7 @@ def watchlist():
     def fetch_group(tickers, currency):
         results = []
         try:
-            data = yf.download(tickers, period='5d', interval='1d', progress=False, group_by='ticker')
+            data = yf.download(tickers, period='5d', interval='1d', progress=False, group_by='ticker', session=session)
             for t in tickers:
                 try:
                     if len(tickers) > 1:

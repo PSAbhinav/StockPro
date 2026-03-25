@@ -7,13 +7,18 @@ pandas-ta
 # Existing real-time dependencies
 Flask>=3.0.0
 Werkzeug>=3.0.1
-Flask-SocketIO>=5.3.5
-python-socketio>=5.10.0
-python-engineio>=4.8.0
 Flask-Cors==4.0.0
+
+# Web data processing
+lxml
+requests
+beautifulsoup4
+
+# Firebase (optional but imported)
+firebase-admin
+
 # Production server
 gunicorn>=21.2.0
-eventlet>=0.33.3
 
 # Core data
 yfinance>=0.2.30
