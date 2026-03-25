@@ -1,33 +1,45 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
 import os
 import logging
 import math
 from dotenv import load_dotenv
-import yfinance as yf
-import pandas as pd
 from datetime import datetime
 
 load_dotenv()
 
-# Lazy load predictor to avoid import crashes on Vercel
-_predictor = None
+# Global Session for User-Agent
+_session = None
+def get_session():
+    global _session
+    if _session is None:
+        import requests
+        _session = requests.Session()
+        _session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        })
+    return _session
+
+# Lazy loaders for heavy libraries
+def get_yf():
+    import yfinance as yf
+    return yf
+
+def get_pd():
+    import pandas as pd
+    return pd
+
+load_dotenv()
 
 def get_predictor():
     global _predictor
     if _predictor is None:
+        import sys
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
         from ai_predictor import StockPredictor
         _predictor = StockPredictor()
     return _predictor
-import requests
-
-# Fix for yfinance on certain hosting providers
-# Set a default user-agent for all requests
-session = requests.Session()
-session.headers.update({
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-})
-
+# Flask setup must remain at top level for Vercel
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 logging.basicConfig(level=logging.INFO)
@@ -217,7 +229,9 @@ def history():
     if interval in ['60m', '90m', '1h'] and period not in ['1d', '5d', '1mo']:
         period = '1mo'
     
-    try:
+        yf = get_yf()
+        pd = get_pd()
+        session = get_session()
         data = yf.download(symbol, period=period, interval=interval, progress=False, session=session)
         data = _flatten_cols(data)
         if data.empty:
@@ -355,8 +369,10 @@ def watchlist():
     
     def fetch_group(tickers, currency):
         results = []
-        try:
-            data = yf.download(tickers, period='5d', interval='1d', progress=False, group_by='ticker', session=session)
+        yf = get_yf()
+        pd = get_pd()
+        session = get_session()
+        data = yf.download(tickers, period='5d', interval='1d', progress=False, group_by='ticker', session=session)
             for t in tickers:
                 try:
                     if len(tickers) > 1:

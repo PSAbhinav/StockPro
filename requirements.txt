@@ -11,7 +11,7 @@ requests
 lxml
 beautifulsoup4
 
-# ML (Delayed Load)
+# ML (Requested)
 scikit-learn>=1.3.0
 
 # Firebase

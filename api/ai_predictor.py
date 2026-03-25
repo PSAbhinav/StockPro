@@ -1,18 +1,15 @@
-import numpy as np
-import pandas as pd
-from datetime import datetime
-import logging
-import yfinance as yf
-from sklearn.ensemble import RandomForestRegressor
+# Heavy imports moved inside methods for lazy loading
 
 logger = logging.getLogger(__name__)
 
 
 class StockPredictor:
     def __init__(self):
+        from sklearn.ensemble import RandomForestRegressor
         self.model = RandomForestRegressor(n_estimators=100, random_state=42)
 
     def _flatten_columns(self, df):
+        import pandas as pd
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
         return df
@@ -39,6 +36,7 @@ class StockPredictor:
         return upper, sma, lower
 
     def _calculate_atr(self, df, period=14):
+        import pandas as pd
         high_low = df['High'] - df['Low']
         high_close = (df['High'] - df['Close'].shift()).abs()
         low_close = (df['Low'] - df['Close'].shift()).abs()
@@ -88,6 +86,7 @@ class StockPredictor:
         return X, y, available
 
     def train(self, ticker):
+        import yfinance as yf
         try:
             data = yf.download(ticker, period='5y', interval='1d', progress=False)
             data = self._flatten_columns(data)
